@@ -3,7 +3,10 @@ type Ingredient = { item_id: string; name: string; quantity: number }
 type Recipe = { id: string; label: string; station: string; batch: number; rate: number; product_id: string; product: string; ingredients: Ingredient[] }
 type MachineNode = { id: string; recipeId: string; x: number; y: number; machines: number }
 type Connection = { key: string; from: MachineNode; to: MachineNode; ingredient: Ingredient; produced: number }
-type PlannerView = 'network' | 'tree' | 'items' | 'buildings'
+type PlannerView = 'network' | 'tree' | 'items' | 'buildings' | 'targets'
+type TargetSection = 'outputs' | 'inputs' | 'options'
+type ProductionTarget = { id: string; itemId: string; recipeId: string; rate: number }
+type ImportedInput = { id: string; itemId: string; rate: number }
 type TreeRow = { key: string; depth: number; kind: 'product' | 'ingredient'; name: string; detail: string; machines?: number; external?: boolean; nodeId?: string }
 type ItemBalance = { id: string; name: string; produced: number; required: number; connected: number; external: number; surplus: number }
 type BuildingSummary = { id: string; name: string; recipeCount: number; machines: number; products: string[] }
@@ -15,7 +18,13 @@ const search = ref('')
 const selectedCategory = ref('all')
 const viewSearch = ref('')
 const activeView = ref<PlannerView>('network')
-const plannerTabs: [PlannerView, string][] = [['network', 'Network Graph'], ['tree', 'Tree List'], ['items', 'Items'], ['buildings', 'Buildings']]
+const plannerTabs: [PlannerView, string][] = [['network', 'Network Graph'], ['tree', 'Tree List'], ['items', 'Items'], ['buildings', 'Buildings'], ['targets', 'Targets']]
+const targetSections: [TargetSection, string][] = [['outputs', 'Outputs'], ['inputs', 'Inputs'], ['options', 'Options']]
+const activeTargetSection = ref<TargetSection>('outputs')
+const productionTargets = ref<ProductionTarget[]>([])
+const importedInputs = ref<ImportedInput[]>([])
+const autoArrangeGenerated = ref(true)
+const preserveExistingPlan = ref(true)
 const nodes = ref<MachineNode[]>([])
 const selectedNodeIds = ref<string[]>([])
 const connections = ref<Record<string, string>>({})
@@ -51,6 +60,10 @@ onMounted(async () => {
       const plan = JSON.parse(saved)
       if (Array.isArray(plan.nodes)) nodes.value = plan.nodes
       if (plan.connections && typeof plan.connections === 'object') connections.value = plan.connections
+      if (Array.isArray(plan.productionTargets)) productionTargets.value = plan.productionTargets
+      if (Array.isArray(plan.importedInputs)) importedInputs.value = plan.importedInputs
+      if (typeof plan.autoArrangeGenerated === 'boolean') autoArrangeGenerated.value = plan.autoArrangeGenerated
+      if (typeof plan.preserveExistingPlan === 'boolean') preserveExistingPlan.value = plan.preserveExistingPlan
     }
   } catch { localStorage.removeItem(storageKey) }
   try {
@@ -79,10 +92,10 @@ function searchShortcut(event: KeyboardEvent) {
   }
 }
 
-watch([nodes, connections], () => {
+watch([nodes, connections, productionTargets, importedInputs, autoArrangeGenerated, preserveExistingPlan], () => {
   if (import.meta.client) {
     if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => localStorage.setItem(storageKey, JSON.stringify({ nodes: nodes.value, connections: connections.value })), 250)
+    saveTimer = setTimeout(() => localStorage.setItem(storageKey, JSON.stringify({ nodes: nodes.value, connections: connections.value, productionTargets: productionTargets.value, importedInputs: importedInputs.value, autoArrangeGenerated: autoArrangeGenerated.value, preserveExistingPlan: preserveExistingPlan.value })), 250)
   }
 }, { deep: true })
 watch(activeView, view => {
@@ -117,8 +130,53 @@ const groupedRecipes = computed(() => {
   }
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
 })
+const productOptions = computed(() => {
+  const items = new Map<string, string>()
+  for (const recipe of recipes.value) items.set(recipe.product_id, recipe.product)
+  return [...items].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+})
+const materialOptions = computed(() => {
+  const items = new Map<string, string>()
+  for (const recipe of recipes.value) {
+    items.set(recipe.product_id, recipe.product)
+    for (const ingredient of recipe.ingredients) items.set(ingredient.item_id, ingredient.name)
+  }
+  return [...items].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+})
 function recipeFor(node: MachineNode) { return recipes.value.find(recipe => recipe.id === node.recipeId) }
 function inputKey(nodeId: string, itemId: string) { return `${nodeId}:${itemId}` }
+function isImportedItem(itemId: string) { return importedInputs.value.some(input => input.itemId === itemId) }
+function recipesForItem(itemId: string) { return recipes.value.filter(recipe => recipe.product_id === itemId && recipe.rate > 0).sort((a, b) => a.station.localeCompare(b.station) || a.label.localeCompare(b.label)) }
+function addProductionTarget() {
+  const item = productOptions.value[0]
+  if (!item) return
+  const recipe = recipesForItem(item.id)[0]
+  if (!recipe) return
+  productionTargets.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, itemId: item.id, recipeId: recipe.id, rate: 1 })
+}
+function setTargetItem(target: ProductionTarget, itemId: string) {
+  const recipe = recipesForItem(itemId)[0]
+  if (!recipe) return
+  target.itemId = itemId
+  target.recipeId = recipe.id
+}
+function setTargetRecipe(target: ProductionTarget, recipeId: string) {
+  const recipe = recipes.value.find(candidate => candidate.id === recipeId && candidate.product_id === target.itemId)
+  if (recipe) target.recipeId = recipe.id
+}
+function addImportedInput() {
+  const item = materialOptions.value.find(candidate => !importedInputs.value.some(input => input.itemId === candidate.id))
+  if (item) importedInputs.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, itemId: item.id, rate: 1 })
+}
+function setImportedItemById(inputId: string, itemId: string) {
+  if (importedInputs.value.some(input => input.id !== inputId && input.itemId === itemId)) return
+  const input = importedInputs.value.find(candidate => candidate.id === inputId)
+  if (input) input.itemId = itemId
+}
+function setImportedRate(inputId: string, value: string | number) {
+  const input = importedInputs.value.find(candidate => candidate.id === inputId)
+  if (input) input.rate = Math.max(0, Number(value) || 0)
+}
 function providersFor(consumer: MachineNode, itemId: string) {
   return nodes.value.filter(node => node.id !== consumer.id && recipeFor(node)?.product_id === itemId && !wouldCreateCycle(consumer.id, node.id))
 }
@@ -199,12 +257,11 @@ function removeNode(nodeId: string) {
 }
 function canExpandChain(node: MachineNode) {
   return recipeFor(node)?.ingredients.some(ingredient => {
-    const canProduce = recipes.value.some(recipe => recipe.product_id === ingredient.item_id && recipe.rate > 0)
-    if (!canProduce) return false
     const providerId = connections.value[inputKey(node.id, ingredient.item_id)]
     const provider = nodes.value.find(candidate => candidate.id === providerId)
     const providerRecipe = provider && recipeFor(provider)
-    return !providerRecipe || providerRecipe.product_id !== ingredient.item_id || providerRecipe.rate <= 0
+    if (providerRecipe?.product_id === ingredient.item_id && providerRecipe.rate > 0) return false
+    return !isImportedItem(ingredient.item_id) && recipesForItem(ingredient.item_id).length > 0
   }) ?? false
 }
 function canExpandNodeId(nodeId: string) {
@@ -408,7 +465,7 @@ function synchronizeUpstream(start: MachineNode) {
     if (recipe?.rate) producer.machines = machinesForDemand(connectedDemand(producer.id), recipe.rate)
   }
 }
-function expandChain(root: MachineNode) {
+function expandChain(root: MachineNode, relayout = true) {
   function expand(parent: MachineNode, path = new Set<string>()) {
     const recipe = recipeFor(parent)
     if (!recipe || path.has(recipe.product_id)) return
@@ -423,17 +480,17 @@ function expandChain(root: MachineNode) {
         producer = undefined
         producerRecipe = undefined
       }
-      const candidate = producerRecipe ?? recipes.value.find(item => item.product_id === ingredient.item_id && item.rate > 0)
+      const candidate = producerRecipe ?? (isImportedItem(ingredient.item_id) ? undefined : recipes.value.find(item => item.product_id === ingredient.item_id && item.rate > 0))
       return { ingredient, demand, key, producer, producerRecipe, candidate }
     })
     for (const need of needs) {
-      const producer = need.producer ?? nodes.value.find(node => node.id !== parent.id && recipeFor(node)?.product_id === need.ingredient.item_id && (recipeFor(node)?.rate ?? 0) > 0 && !wouldCreateCycle(parent.id, node.id))
+      const producer = need.producer ?? (!isImportedItem(need.ingredient.item_id) ? nodes.value.find(node => node.id !== parent.id && recipeFor(node)?.product_id === need.ingredient.item_id && (recipeFor(node)?.rate ?? 0) > 0 && !wouldCreateCycle(parent.id, node.id)) : undefined)
       const producerRecipe = producer && recipeFor(producer)
       if (producer && producerRecipe) {
         connections.value[need.key] = producer.id
         need.producer = producer
         need.producerRecipe = producerRecipe
-        producer.machines = Math.max(producer.machines, machinesForDemand(connectedDemand(producer.id), producerRecipe.rate))
+        producer.machines = machinesForDemand(connectedDemand(producer.id), producerRecipe.rate)
         expand(producer, nextPath)
       }
     }
@@ -458,8 +515,10 @@ function expandChain(root: MachineNode) {
     })
   }
   expand(root)
-  arrangeNetwork()
-  void nextTick(centerCanvas)
+  if (relayout) {
+    arrangeNetwork()
+    void nextTick(centerCanvas)
+  }
 }
 function setConnection(key: string, providerId: string) {
   if (providerId) connections.value[key] = providerId
@@ -474,6 +533,29 @@ function amount(value: number) {
   return Math.abs(value) > 0 && Math.abs(value) < 0.01
     ? value.toLocaleString(undefined, { maximumSignificantDigits: 3 })
     : value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
+function buildProductionTargets() {
+  if (!preserveExistingPlan.value) {
+    nodes.value = []
+    connections.value = {}
+    selectedNodeIds.value = []
+  }
+  for (const target of productionTargets.value) {
+    const recipe = recipes.value.find(candidate => candidate.id === target.recipeId && candidate.product_id === target.itemId)
+      ?? recipesForItem(target.itemId)[0]
+    if (!recipe || target.rate <= 0) continue
+    let root = nodes.value.find(node => node.recipeId === recipe.id && !Object.values(connections.value).includes(node.id))
+    if (!root) {
+      const index = nodes.value.length
+      root = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, recipeId: recipe.id, x: 48 + (index % 4) * 350, y: 48 + Math.floor(index / 4) * 600, machines: 1 }
+      nodes.value.push(root)
+    }
+    root.machines = machinesForDemand(target.rate, recipe.rate)
+    expandChain(root, false)
+  }
+  if (autoArrangeGenerated.value) arrangeNetwork()
+  activeView.value = 'network'
+  void nextTick(centerCanvas)
 }
 
 const network = computed(() => {
@@ -528,7 +610,12 @@ const network = computed(() => {
   }
 })
 
-const viewTitle = computed(() => ({ network: 'Network Graph', tree: 'Tree List', items: 'Items', buildings: 'Buildings' })[activeView.value])
+const viewTitle = computed(() => ({ network: 'Network Graph', tree: 'Tree List', items: 'Items', buildings: 'Buildings', targets: 'Production Targets' })[activeView.value])
+const importedInputBalances = computed(() => importedInputs.value.map(input => {
+  const item = materialOptions.value.find(candidate => candidate.id === input.itemId)
+  const required = network.value.external.find(candidate => candidate.id === input.itemId)?.amount ?? 0
+  return { ...input, name: item?.name ?? input.itemId, required, shortage: Math.max(0, required - input.rate) }
+}))
 const treeRows = computed<TreeRow[]>(() => {
   const suppliedNodes = new Set(Object.values(connections.value))
   const roots = nodes.value.filter(node => !suppliedNodes.has(node.id))
@@ -730,7 +817,7 @@ function linkPath(link: Connection) {
         <div class="plan-toolbar">
           <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong></div>
           <div v-if="activeView === 'network'" class="toolbar-actions"><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="icon-button" title="Center machines" aria-label="Center machines" @click="centerCanvas">⌖</button></div>
-          <span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : buildingSummaries.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : 'BUILDINGS' }}</span>
+          <span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
         </div>
         <div v-show="activeView === 'network'" ref="canvas" class="canvas-viewport" :class="{ 'is-panning': panning }" @pointerdown="startSelectOrPan" @pointermove="selectOrPanMove" @pointerup="finishSelectOrPan" @pointercancel="finishSelectOrPan" @dragenter.prevent="updateDragPreview" @dragover.prevent="updateDragPreview" @drop.prevent="dropCatalogRecipe" @contextmenu.prevent>
         <div ref="canvasBoard" class="canvas-board" :class="{ 'has-nodes': nodes.length }" :style="{ zoom: `${zoom}%`, width: `${boardWidth}px`, height: `${boardHeight}px`, backgroundPosition: `${-boardBounds.left}px ${-boardBounds.top}px` }">
@@ -771,7 +858,39 @@ function linkPath(link: Connection) {
           <div v-if="selecting" class="selection-box" :style="selectionBoxStyle" />
         </div>
         <section v-if="activeView !== 'network'" class="data-view">
-          <label v-if="activeView !== 'tree'" class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" :placeholder="activeView === 'items' ? 'Search planned items' : 'Search buildings or products'"></label>
+          <section v-if="activeView === 'targets'" class="target-panel">
+            <div class="target-intro"><div><p class="eyebrow">PRODUCTION REQUEST</p><h2>Plan what you need</h2></div><p>Set output rates, then generate the machines and ingredient chain.</p></div>
+            <nav class="target-tabs" aria-label="Production target sections"><button v-for="section in targetSections" :key="section[0]" :class="{ active: activeTargetSection === section[0] }" @click="activeTargetSection = section[0]">{{ section[1] }}</button></nav>
+            <div v-if="activeTargetSection === 'outputs'" class="target-section">
+              <div class="target-section-heading"><div><p class="eyebrow">DESIRED OUTPUTS</p><h3>Items to produce</h3></div><button class="button subtle add-target" @click="addProductionTarget">＋ Add an item</button></div>
+              <div v-if="productionTargets.length" class="target-list">
+                <article v-for="target in productionTargets" :key="target.id" class="target-card">
+                  <div class="target-card-top"><label class="target-product"><span class="item-icon">{{ materialOptions.find(item => item.id === target.itemId)?.name.slice(0, 1).toUpperCase() }}</span><select :value="target.itemId" :aria-label="`Output item ${materialOptions.find(item => item.id === target.itemId)?.name}`" @change="setTargetItem(target, ($event.target as HTMLSelectElement).value)"><option v-for="item in productOptions" :key="item.id" :value="item.id">{{ item.name }}</option></select></label><select class="target-recipe" :value="target.recipeId" :aria-label="`Recipe for ${materialOptions.find(item => item.id === target.itemId)?.name}`" @change="setTargetRecipe(target, ($event.target as HTMLSelectElement).value)"><option v-for="recipe in recipesForItem(target.itemId)" :key="recipe.id" :value="recipe.id">{{ recipe.station.replaceAll('_', ' ') }} · {{ recipe.label }}</option></select><button class="remove-target" :aria-label="`Remove ${materialOptions.find(item => item.id === target.itemId)?.name} output`" title="Remove output" @click="productionTargets = productionTargets.filter(item => item.id !== target.id)">×</button></div>
+                  <div class="target-rate"><label :for="`output-rate-${target.id}`">Target amount</label><div class="rate-input"><input :id="`output-rate-${target.id}`" v-model.number="target.rate" type="number" min="0.01" step="0.1"><span>items / min</span></div></div>
+                </article>
+              </div>
+              <div v-else class="target-empty"><span class="empty-symbol">＋</span><strong>No output items yet</strong><p>Add an item and set the amount you need per minute.</p></div>
+              <div class="target-actions"><p>Whole machines are rounded up to meet each requested rate. Shared ingredients use one producer sized for all connected outputs.</p><button class="button primary" :disabled="!productionTargets.length" @click="buildProductionTargets">Generate production chain</button></div>
+            </div>
+            <div v-else-if="activeTargetSection === 'inputs'" class="target-section">
+              <div class="target-section-heading"><div><p class="eyebrow">AVAILABLE INPUTS</p><h3>Items supplied from outside</h3></div><button class="button subtle add-target" :disabled="importedInputs.length >= materialOptions.length" @click="addImportedInput">＋ Add an item</button></div>
+              <p class="target-help">Items listed here are treated as direct imports when a chain is generated, so no producer machines are added for them. Existing connected producers remain in your current plan.</p>
+              <div v-if="importedInputs.length" class="target-list">
+                <article v-for="input in importedInputBalances" :key="input.id" class="target-card input-target-card">
+                  <div class="target-card-top"><label class="target-product"><span class="item-icon">{{ input.name.slice(0, 1).toUpperCase() }}</span><select :value="input.itemId" :aria-label="`Imported input ${input.name}`" @change="setImportedItemById(input.id, ($event.target as HTMLSelectElement).value)"><option v-for="item in materialOptions" :key="item.id" :value="item.id" :disabled="importedInputs.some(existing => existing.id !== input.id && existing.itemId === item.id)">{{ item.name }}</option></select></label><button class="remove-target" :aria-label="`Remove ${input.name} input`" title="Remove input" @click="importedInputs = importedInputs.filter(item => item.id !== input.id)">×</button></div>
+                  <div class="input-target-summary"><span>External requirement <strong>{{ amount(input.required) }} / min</strong></span><span>Available <strong>{{ amount(input.rate) }} / min</strong></span><span :class="{ 'needs-supply': input.shortage > 0 }">Shortfall <strong>{{ amount(input.shortage) }} / min</strong></span></div>
+                  <div class="target-rate"><label :for="`input-rate-${input.id}`">Available amount</label><div class="rate-input"><input :id="`input-rate-${input.id}`" :value="input.rate" type="number" min="0" step="0.1" @change="setImportedRate(input.id, ($event.target as HTMLInputElement).value)"><span>items / min</span></div></div>
+                </article>
+              </div>
+              <div v-else class="target-empty"><span class="empty-symbol">↓</span><strong>No imported inputs set</strong><p>Raw materials will appear here as external requirements after the chain is generated.</p></div>
+            </div>
+            <div v-else class="target-section options-section">
+              <div class="target-section-heading"><div><p class="eyebrow">GENERATION OPTIONS</p><h3>How to build the plan</h3></div></div>
+              <label class="target-option"><input v-model="autoArrangeGenerated" type="checkbox"><span><strong>Arrange the graph automatically</strong><small>Place outputs on the right and ingredient producers in compact columns.</small></span></label>
+              <label class="target-option"><input v-model="preserveExistingPlan" type="checkbox"><span><strong>Keep the current plan</strong><small>Reuse matching producers and add requested outputs to the existing graph.</small></span></label>
+            </div>
+          </section>
+          <label v-else-if="activeView !== 'tree'" class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" :placeholder="activeView === 'items' ? 'Search planned items' : 'Search buildings or products'"></label>
           <div v-if="activeView === 'tree'" class="tree-panel">
             <div class="table-intro"><div><p class="eyebrow">RECIPE DEPENDENCIES</p><h2>Production tree</h2></div><span>{{ nodes.length }} machines · {{ network.external.length }} raw inputs</span></div>
             <div v-if="treeRows.length" class="tree-list">
@@ -824,6 +943,6 @@ function linkPath(link: Connection) {
 .zoom-controls{display:flex;align-items:center;gap:7px}.zoom-controls .icon-button{font-size:13px}.icon-button:disabled{opacity:.4;cursor:default}
 
 .view-tabs{height:43px;flex:none;display:flex;align-items:stretch;gap:5px;padding:0 20px;border-bottom:1px solid #27302b;background:#151b17}.view-tab{position:relative;padding:0 14px;border:0;background:transparent;color:#8c988e;font:11px 'DM Sans',sans-serif;cursor:pointer}.view-tab:hover{color:#dce5dd}.view-tab.active{color:#c5e0c7}.view-tab.active:after{position:absolute;right:10px;bottom:-1px;left:10px;height:2px;background:#80b587;content:''}.view-count{color:#829085;font:9px 'DM Mono',monospace;letter-spacing:.08em}.data-view{min-height:0;flex:1;overflow:auto;background:#111713}.table-panel,.tree-panel{min-height:100%;padding:20px 22px}.table-intro{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:0 0 18px}.table-intro .eyebrow{margin-bottom:5px}.table-intro h2{margin:0;color:#e1e8e1;font-size:17px;font-weight:600;letter-spacing:-.025em;text-transform:capitalize}.table-intro>span{color:#7d8b7f;font:9px 'DM Mono',monospace;white-space:nowrap}.view-search{height:34px;display:flex;align-items:center;gap:8px;margin:0 0 17px;padding:0 10px;border:1px solid #303a32;border-radius:5px;background:#171e19;color:#89968b}.view-search>span{font-size:18px}.view-search input{width:100%;border:0;outline:0;background:transparent;color:#dce5dd;font:11px 'DM Sans',sans-serif}.view-search input::placeholder{color:#68766b}.table-scroll{overflow:auto;border:1px solid #2b352d;border-radius:6px}.planner-table{width:100%;border-collapse:collapse;font-size:10px;text-align:right}.planner-table thead{position:sticky;top:0;z-index:1;background:#1b241d}.planner-table th,.planner-table td{height:39px;padding:7px 12px;border-bottom:1px solid #28312a;white-space:nowrap}.planner-table thead th{color:#8c9b8d;font:8px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase}.planner-table tbody td{color:#c5d0c6;font:10px 'DM Mono',monospace}.planner-table tbody tr:hover{background:#19221b}.planner-table tbody th[scope=row]{color:#dbe3dc;text-align:left;font-size:10px;font-weight:500;text-transform:capitalize}.planner-table tbody th:first-child,.planner-table thead th:first-child{text-align:left}.table-item-icon{width:22px;height:22px;display:inline-grid;place-items:center;margin-right:8px;border:1px solid #39463a;border-radius:4px;background:#202920;color:#a8c8aa;font:9px 'DM Mono',monospace}.needs-supply{color:#e5bd84!important}.has-surplus{color:#a5d2a9!important}.building-name{min-width:130px}.products-cell{max-width:360px;overflow:hidden;text-overflow:ellipsis;text-align:left!important;color:#8f9d91!important;font:9px 'DM Sans',sans-serif!important}.machine-pill{display:inline-block;padding:4px 6px;border:1px solid #354438;border-radius:4px;background:#202a22;color:#acd0ae;font:9px 'DM Mono',monospace}.table-empty{padding:32px!important;color:#829085!important;text-align:center!important;font-family:'DM Sans',sans-serif!important}.tree-list{overflow:hidden;border:1px solid #2b352d;border-radius:6px}.tree-row{min-height:35px;display:flex;align-items:center;gap:9px;padding-top:5px;padding-right:12px;padding-bottom:5px;border-bottom:1px solid #242e27;color:#c5d0c6;font-size:10px}.tree-row:last-child{border-bottom:0}.tree-row:hover{background:#18211a}.tree-row strong{min-width:95px;color:#dfe6df;font-size:10px;font-weight:500;text-transform:capitalize}.tree-marker{width:14px;flex:none;color:#9ec4a1;text-align:center;font:11px 'DM Mono',monospace}.tree-ingredient .tree-marker{color:#829285}.tree-ingredient.is-external .tree-marker,.tree-ingredient.is-external .tree-detail{color:#d6b57f}.tree-detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#879589;font:9px 'DM Mono',monospace}.tree-count{margin-left:auto;color:#a8c8aa;font:9px 'DM Mono',monospace;white-space:nowrap}.view-empty{padding:70px 20px;text-align:center}.view-empty h2{margin:0 0 8px;color:#dce4dc;font-size:15px;font-weight:500}.view-empty p{margin:0;color:#849087;font-size:11px}
-.category-strip{display:flex;gap:5px;overflow-x:auto;flex:none;margin:10px 0 1px;padding:0 0 5px;scrollbar-width:none}.category-strip::-webkit-scrollbar{display:none}.category-chip{display:flex;align-items:center;gap:6px;flex:none;padding:5px 8px;border:1px solid #303a32;border-radius:4px;background:#1a211c;color:#aeb9af;font-size:9px;text-transform:capitalize;white-space:nowrap;cursor:pointer}.category-chip:hover{border-color:#526553;color:#dce5dd}.category-chip.active{border-color:#607f61;background:#263428;color:#cae0ca}.category-chip span,.recipe-group-heading>span:last-child{color:#7e8d80;font:8px 'DM Mono',monospace}.recipe-group{margin-bottom:4px}.recipe-group-heading{display:flex;align-items:center;justify-content:space-between;padding:8px 4px 5px;color:#a6b2a7;font:8px 'DM Mono',monospace;letter-spacing:.09em;text-transform:uppercase}.drag-preview{z-index:3;opacity:.86;border-style:dashed;border-color:#8fbc91;box-shadow:0 0 0 2px #80b58730,0 8px 26px #0005;pointer-events:none}.drag-preview .machine-head{background:#263328}.drop-hint{margin:0;color:#8fa491;font-size:10px}.tree-expand{flex:none;padding:4px 6px;border:1px solid #3a4a3c;border-radius:4px;background:#202b22;color:#a8c8aa;font:8px 'DM Sans',sans-serif;cursor:pointer}.tree-expand:hover{border-color:#668469;background:#27372a}.tree-expand+.tree-count{margin-left:0}.catalog-item{cursor:grab}.catalog-item:active{cursor:grabbing}@media(max-width:1100px){.planner-layout{grid-template-columns:230px minmax(400px,1fr)}.inspector{display:none}.sidebar{padding-left:10px;padding-right:10px}}
+.category-strip{display:flex;gap:5px;overflow-x:auto;flex:none;margin:10px 0 1px;padding:0 0 5px;scrollbar-width:none}.category-strip::-webkit-scrollbar{display:none}.category-chip{display:flex;align-items:center;gap:6px;flex:none;padding:5px 8px;border:1px solid #303a32;border-radius:4px;background:#1a211c;color:#aeb9af;font-size:9px;text-transform:capitalize;white-space:nowrap;cursor:pointer}.category-chip:hover{border-color:#526553;color:#dce5dd}.category-chip.active{border-color:#607f61;background:#263428;color:#cae0ca}.category-chip span,.recipe-group-heading>span:last-child{color:#7e8d80;font:8px 'DM Mono',monospace}.recipe-group{margin-bottom:4px}.recipe-group-heading{display:flex;align-items:center;justify-content:space-between;padding:8px 4px 5px;color:#a6b2a7;font:8px 'DM Mono',monospace;letter-spacing:.09em;text-transform:uppercase}.drag-preview{z-index:3;opacity:.86;border-style:dashed;border-color:#8fbc91;box-shadow:0 0 0 2px #80b58730,0 8px 26px #0005;pointer-events:none}.drag-preview .machine-head{background:#263328}.drop-hint{margin:0;color:#8fa491;font-size:10px}.tree-expand{flex:none;padding:4px 6px;border:1px solid #3a4a3c;border-radius:4px;background:#202b22;color:#a8c8aa;font:8px 'DM Sans',sans-serif;cursor:pointer}.tree-expand:hover{border-color:#668469;background:#27372a}.tree-expand+.tree-count{margin-left:0}.catalog-item{cursor:grab}.catalog-item:active{cursor:grabbing}.target-panel{width:min(860px,100%);margin:0 auto;padding:28px 22px 40px;overflow:auto}.target-intro{margin:0 0 20px;color:#89968b;font-size:11px;line-height:1.6}.target-tabs{display:flex;gap:5px;border-bottom:1px solid #303a32;margin-bottom:18px}.target-tabs button{padding:10px 16px;border:1px solid transparent;border-bottom:0;border-radius:5px 5px 0 0;background:transparent;color:#93a095;font:10px 'DM Sans',sans-serif;cursor:pointer}.target-tabs button.active{border-color:#303a32;background:#1b231d;color:#c9dfca}.target-section{padding:18px;border:1px solid #2b352d;border-radius:7px;background:#171e19}.target-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}.target-section-heading h2{margin:0;color:#e0e7e1;font-size:14px;font-weight:500}.target-list{display:flex;flex-direction:column;gap:9px}.target-card{padding:13px;border:1px solid #303a32;border-radius:6px;background:#141a16}.target-card-top{display:flex;align-items:center;gap:12px}.target-product{display:flex;align-items:center;gap:10px;flex:1;min-width:0}.target-product .item-icon{width:34px;height:34px}.target-product select,.target-recipe select{height:34px;min-width:0;border:1px solid #39463c;border-radius:4px;background:#202822;color:#d9e1da;padding:0 9px;font:10px 'DM Sans',sans-serif}.target-product select{flex:1}.target-recipe{margin:9px 0 0 44px}.target-recipe select{width:min(100%,400px)}.remove-target{flex:none;border:1px solid #3a3932;border-radius:4px;background:#211d19;color:#b7a396;padding:6px 9px;font:9px 'DM Sans',sans-serif;cursor:pointer}.remove-target:hover{border-color:#795b4a;color:#e0b99e}.target-rate{display:flex;align-items:center;gap:10px;margin:10px 0 0 44px;color:#89978b;font:9px 'DM Mono',monospace}.rate-input{width:112px;height:30px;border:1px solid #3b473d;border-radius:4px;background:#202822;color:#e3ebe4;padding:0 8px;text-align:right;font:10px 'DM Mono',monospace}.target-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.button.primary{border-color:#59765b;background:#2c402f;color:#d5ebd6}.button.primary:hover:not(:disabled){background:#38513a}.target-help{margin:14px 0 0;color:#7f8c81;font-size:10px;line-height:1.6}.input-target-summary{margin-top:14px;border-top:1px solid #2b352d;padding-top:10px}.input-target-summary p{display:flex;justify-content:space-between;gap:16px;margin:7px 0;color:#929e94;font:9px 'DM Mono',monospace}.input-target-summary strong{color:#d6e2d7;font-weight:400}.input-target-summary .shortfall{color:#e5bd84}.target-option{display:flex;align-items:flex-start;gap:10px;padding:13px 2px;border-bottom:1px solid #29332b;color:#cbd5cc;font-size:11px}.target-option:last-child{border-bottom:0}.target-option input{accent-color:#80aa82}.target-option small{display:block;margin-top:4px;color:#839086;font-size:9px;line-height:1.5}.target-empty{padding:20px 10px;text-align:center;color:#7f8c81;font-size:10px}.add-target{padding:6px 9px;border:1px solid #354139;border-radius:4px;background:#202822;color:#b9c7ba;font:9px 'DM Sans',sans-serif;cursor:pointer}.add-target:hover{border-color:#607f61;color:#d5e7d6}@media(max-width:1100px){.planner-layout{grid-template-columns:230px minmax(400px,1fr)}.inspector{display:none}.sidebar{padding-left:10px;padding-right:10px}}
 @media(max-width:700px){.app-shell{height:auto;min-height:100vh;overflow:visible}.topbar{height:52px;padding:0 12px}.save-state{display:none}.view-tabs{height:40px;overflow-x:auto;padding:0 8px}.view-tab{padding:0 11px;white-space:nowrap}.planner-layout{display:flex;flex-direction:column;min-height:calc(100vh - 92px)}.sidebar{height:280px;flex:none;border-right:0;border-bottom:1px solid #27302b}.catalog-list{display:block}.sidebar-tip{display:none}.main-area{height:calc(100vh - 372px);min-height:480px}.table-panel,.tree-panel{padding:15px 12px}.tree-row{gap:6px;padding-right:8px}.tree-row strong{min-width:72px}.tree-detail{font-size:8px}.planner-table th,.planner-table td{padding:7px 8px}.plan-toolbar{padding:0 10px}.canvas-viewport{min-height:0}.inspector{display:flex;min-height:300px;border-left:0;border-top:1px solid #27302b}.machine-card{width:280px}.flow-line{stroke-dasharray:4 4}}
 </style>
