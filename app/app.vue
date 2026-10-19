@@ -7,9 +7,12 @@ type PlannerView = 'network' | 'tree' | 'items' | 'buildings'
 type TreeRow = { key: string; depth: number; kind: 'product' | 'ingredient'; name: string; detail: string; machines?: number; external?: boolean }
 type ItemBalance = { id: string; name: string; produced: number; required: number; connected: number; external: number; surplus: number }
 type BuildingSummary = { id: string; name: string; recipeCount: number; machines: number; products: string[] }
+type RecipeGroup = { id: string; name: string; recipes: Recipe[] }
+type PortPoint = { x: number; y: number }
 const recipes = ref<Recipe[]>([])
 const metadata = ref<{ recipeCount: number; itemCount: number; retrievedAt: string } | null>(null)
 const search = ref('')
+const selectedCategory = ref('all')
 const viewSearch = ref('')
 const activeView = ref<PlannerView>('network')
 const plannerTabs: [PlannerView, string][] = [['network', 'Network Graph'], ['tree', 'Tree List'], ['items', 'Items'], ['buildings', 'Buildings']]
@@ -17,6 +20,9 @@ const nodes = ref<MachineNode[]>([])
 const connections = ref<Record<string, string>>({})
 const activeInput = ref('')
 const canvas = ref<HTMLElement | null>(null)
+const canvasBoard = ref<HTMLElement | null>(null)
+const portPositions = ref<Record<string, PortPoint>>({})
+const portElements = new Map<string, HTMLElement>()
 const movingNode = ref<{ node: MachineNode; pointerId: number; clientX: number; clientY: number; x: number; y: number } | null>(null)
 const panning = ref<{ pointerId: number; clientX: number; clientY: number; scrollLeft: number; scrollTop: number } | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | undefined
@@ -60,6 +66,7 @@ onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
   if (moveFrame) cancelAnimationFrame(moveFrame)
 })
+onUpdated(updatePortPositions)
 function searchShortcut(event: KeyboardEvent) {
   if (event.key === '/' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
     event.preventDefault()
@@ -76,7 +83,31 @@ watch([nodes, connections], () => {
 
 const filteredRecipes = computed(() => {
   const needle = search.value.trim().toLowerCase()
-  return recipes.value.filter(recipe => !needle || `${recipe.product} ${recipe.label} ${recipe.station}`.toLowerCase().includes(needle))
+  return recipes.value.filter(recipe => (selectedCategory.value === 'all' || recipe.station === selectedCategory.value) && (!needle || `${recipe.product} ${recipe.label} ${recipe.station}`.toLowerCase().includes(needle)))
+})
+const recipeGroups = computed<RecipeGroup[]>(() => {
+  const groups = new Map<string, RecipeGroup>()
+  for (const recipe of recipes.value) {
+    let group = groups.get(recipe.station)
+    if (!group) {
+      group = { id: recipe.station, name: recipe.station.replaceAll('_', ' '), recipes: [] }
+      groups.set(recipe.station, group)
+    }
+    group.recipes.push(recipe)
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
+})
+const groupedRecipes = computed(() => {
+  const groups = new Map<string, RecipeGroup>()
+  for (const recipe of filteredRecipes.value) {
+    let group = groups.get(recipe.station)
+    if (!group) {
+      group = { id: recipe.station, name: recipe.station.replaceAll('_', ' '), recipes: [] }
+      groups.set(recipe.station, group)
+    }
+    group.recipes.push(recipe)
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
 })
 function recipeFor(node: MachineNode) { return recipes.value.find(recipe => recipe.id === node.recipeId) }
 function inputKey(nodeId: string, itemId: string) { return `${nodeId}:${itemId}` }
@@ -117,6 +148,32 @@ function removeNode(nodeId: string) {
   for (const [key, value] of Object.entries(connections.value)) {
     if (key.startsWith(`${nodeId}:`) || value === nodeId) delete connections.value[key]
   }
+}
+function canExpandChain(node: MachineNode) {
+  return recipeFor(node)?.ingredients.some(ingredient => recipes.value.some(recipe => recipe.product_id === ingredient.item_id && recipe.rate > 0)) ?? false
+}
+function setPortElement(key: string, element: unknown) {
+  if (import.meta.client && element instanceof HTMLElement) portElements.set(key, element)
+  else portElements.delete(key)
+}
+function updatePortPositions() {
+  const board = canvasBoard.value
+  if (!board) return
+  const boardRect = board.getBoundingClientRect()
+  if (!boardRect.width || !boardRect.height) return
+  const scale = zoom.value / 100
+  const positions: Record<string, PortPoint> = {}
+  for (const [key, element] of portElements) {
+    if (!element.isConnected) continue
+    const rect = element.getBoundingClientRect()
+    positions[key] = {
+      x: boardBounds.value.left + (rect.left + rect.width / 2 - boardRect.left) / scale,
+      y: boardBounds.value.top + (rect.top + rect.height / 2 - boardRect.top) / scale
+    }
+  }
+  const old = portPositions.value
+  const changed = Object.keys(positions).length !== Object.keys(old).length || Object.keys(positions).some(key => !old[key] || Math.abs(old[key].x - positions[key].x) > 0.5 || Math.abs(old[key].y - positions[key].y) > 0.5)
+  if (changed) portPositions.value = positions
 }
 function startNodeMove(event: PointerEvent, node: MachineNode) {
   if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
@@ -228,7 +285,7 @@ function expandChain(root: MachineNode) {
         recipeId: candidate.id,
         x: parent.x - 384,
         y: Math.round((cursorY + branchHeight / 2 - machineCardHeight(candidate) / 2) / GRID) * GRID,
-        machines: Math.max(1, Math.min(999, Math.ceil(need.demand / candidate.rate)))
+        machines: Math.max(1, Math.ceil(need.demand / candidate.rate))
       }
       cursorY += branchHeight + TREE_GAP
       nodes.value.push(child)
@@ -390,13 +447,14 @@ function centerCanvas() {
   const maxY = Math.max(...nodes.value.map(node => node.y + 220))
   canvas.value.scrollTo({ left: Math.max(0, ((minX + maxX) / 2 - boardBounds.value.left) * scale - canvas.value.clientWidth / 2), top: Math.max(0, ((minY + maxY) / 2 - boardBounds.value.top) * scale - canvas.value.clientHeight / 2), behavior: 'smooth' })
 }
+function portPosition(key: string, fallback: PortPoint) { return portPositions.value[key] ?? fallback }
 function linkPath(link: Connection) {
-  const startX = link.from.x + 300
-  const startY = link.from.y + 128
-  const endX = link.to.x
-  const endY = link.to.y + 180 + (recipeFor(link.to)?.ingredients.findIndex(item => item.item_id === link.ingredient.item_id) ?? 0) * 29
-  const curve = Math.max(50, Math.abs(endX - startX) * 0.48)
-  return `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`
+  const start = portPosition(`output:${link.from.id}`, { x: link.from.x + 300, y: link.from.y + 128 })
+  const ingredientIndex = recipeFor(link.to)?.ingredients.findIndex(item => item.item_id === link.ingredient.item_id) ?? 0
+  const end = portPosition(`input:${link.key}`, { x: link.to.x, y: link.to.y + 180 + ingredientIndex * 29 })
+  const direction = end.x >= start.x ? 1 : -1
+  const curve = Math.max(50, Math.abs(end.x - start.x) * 0.48)
+  return `M ${start.x} ${start.y} C ${start.x + direction * curve} ${start.y}, ${end.x - direction * curve} ${end.y}, ${end.x} ${end.y}`
 }
 </script>
 
@@ -415,13 +473,20 @@ function linkPath(link: Connection) {
       <aside class="sidebar">
         <div class="side-heading"><div><p class="eyebrow">BUILD YOUR NETWORK</p><h1>Production plan</h1></div><span class="node-count">{{ nodes.length }}</span></div>
         <label class="search-box"><span class="search-icon">⌕</span><input v-model="search" type="search" placeholder="Find an item or recipe" autocomplete="off"><kbd>/</kbd></label>
+        <div class="category-strip" aria-label="Recipe categories">
+          <button class="category-chip" :class="{ active: selectedCategory === 'all' }" @click="selectedCategory = 'all'">All <span>{{ recipes.length }}</span></button>
+          <button v-for="group in recipeGroups" :key="group.id" class="category-chip" :class="{ active: selectedCategory === group.id }" :title="group.name" @click="selectedCategory = group.id">{{ group.name }} <span>{{ group.recipes.length }}</span></button>
+        </div>
         <div class="catalog-heading"><span>RECIPE CATALOGUE</span><span>{{ filteredRecipes.length }}</span></div>
         <div class="catalog-list">
-          <button v-for="recipe in filteredRecipes" :key="recipe.id" class="catalog-item" @click="addRecipe(recipe)">
-            <span class="item-icon">{{ recipe.product.slice(0, 1).toUpperCase() }}</span>
-            <span class="catalog-copy"><strong>{{ recipe.product }}</strong><small>{{ recipe.station.replaceAll('_', ' ') }}</small></span>
-            <span class="add-icon">+</span>
-          </button>
+          <div v-for="group in groupedRecipes" :key="group.id" class="recipe-group">
+            <div class="recipe-group-heading"><span>{{ group.name }}</span><span>{{ group.recipes.length }}</span></div>
+            <button v-for="recipe in group.recipes" :key="recipe.id" class="catalog-item" @click="addRecipe(recipe)">
+              <span class="item-icon">{{ recipe.product.slice(0, 1).toUpperCase() }}</span>
+              <span class="catalog-copy"><strong>{{ recipe.product }}</strong><small>{{ recipe.label }}</small></span>
+              <span class="add-icon">+</span>
+            </button>
+          </div>
           <p v-if="pending" class="empty-state">Loading catalogue…</p>
           <p v-else-if="!filteredRecipes.length" class="empty-state">No matching recipes.</p>
         </div>
@@ -435,12 +500,12 @@ function linkPath(link: Connection) {
           <span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : buildingSummaries.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : 'BUILDINGS' }}</span>
         </div>
         <div v-show="activeView === 'network'" ref="canvas" class="canvas-viewport" :class="{ 'is-panning': panning }" @pointerdown="startPan" @pointermove="panCanvas" @pointerup="finishPan" @pointercancel="finishPan">
-          <div class="canvas-board" :class="{ 'has-nodes': nodes.length }" :style="{ zoom: `${zoom}%`, width: `${boardWidth}px`, height: `${boardHeight}px`, backgroundPosition: `${-boardBounds.left}px ${-boardBounds.top}px` }">
+        <div ref="canvasBoard" class="canvas-board" :class="{ 'has-nodes': nodes.length }" :style="{ zoom: `${zoom}%`, width: `${boardWidth}px`, height: `${boardHeight}px`, backgroundPosition: `${-boardBounds.left}px ${-boardBounds.top}px` }">
             <svg class="connections" :viewBox="`${boardBounds.left} ${boardBounds.top} ${boardWidth} ${boardHeight}`" preserveAspectRatio="none" aria-label="Material flow connections">
               <g v-for="link in network.connectionRows" :key="link.key">
                 <path class="flow-shadow" :d="linkPath(link)" />
                 <path class="flow-line" :d="linkPath(link)" />
-                <circle class="flow-dot" :cx="link.from.x + 300" :cy="link.from.y + 72" r="4" />
+                <circle class="flow-dot" :cx="portPosition(`output:${link.from.id}`, { x: link.from.x + 300, y: link.from.y + 128 }).x" :cy="portPosition(`output:${link.from.id}`, { x: link.from.x + 300, y: link.from.y + 128 }).y" r="4" />
               </g>
             </svg>
             <article v-for="node in nodes" :key="node.id" class="machine-card" :style="{ left: `${node.x - boardBounds.left}px`, top: `${node.y - boardBounds.top}px` }">
@@ -452,11 +517,11 @@ function linkPath(link: Connection) {
                 <p class="node-label">PRODUCTION MACHINE</p>
                 <h2>{{ recipeFor(node)?.product }}</h2>
                 <div class="machine-control"><span>Machines</span><div class="stepper"><button :aria-label="`Remove one ${recipeFor(node)?.product} machine`" @click="setMachineCount(node, node.machines - 1)">−</button><input :aria-label="`${recipeFor(node)?.product} machine count`" type="number" min="1" max="999" :value="node.machines" @change="setMachineCount(node, ($event.target as HTMLInputElement).value)"><button :aria-label="`Add one ${recipeFor(node)?.product} machine`" @click="setMachineCount(node, node.machines + 1)">+</button></div></div>
-                <button class="expand-chain" :title="`Create producer machines for ${recipeFor(node)?.product} inputs`" @pointerdown.stop @click="expandChain(node)"><span aria-hidden="true">↳</span> Expand ingredient chain</button>
-                <div class="node-output"><span class="port output-port" /><span class="port-copy"><small>OUTPUT</small><strong>{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} <em>/ min</em></strong></span><span class="output-name">{{ recipeFor(node)?.product }}</span></div>
+                <button v-if="canExpandChain(node)" class="expand-chain" :title="`Create producer machines for ${recipeFor(node)?.product} inputs`" @pointerdown.stop @click="expandChain(node)"><span aria-hidden="true">↳</span> Expand ingredient chain</button>
+                <div class="node-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><span class="port-copy"><small>OUTPUT</small><strong>{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} <em>/ min</em></strong></span><span class="output-name">{{ recipeFor(node)?.product }}</span></div>
                 <div class="input-heading"><span>INPUTS</span><span>/ MIN</span></div>
                 <div v-for="ingredient in recipeFor(node)?.ingredients" :key="ingredient.item_id" class="node-input">
-                  <span class="port input-port" :class="{ connected: connections[inputKey(node.id, ingredient.item_id)] }" />
+                  <span class="port input-port" :class="{ connected: connections[inputKey(node.id, ingredient.item_id)] }" :ref="element => setPortElement(`input:${inputKey(node.id, ingredient.item_id)}`, element)" />
                   <span class="input-name">{{ ingredient.name }}</span>
                   <strong>{{ amount(ingredient.quantity * (recipeFor(node)?.rate ?? 0) / (recipeFor(node)?.batch ?? 1) * node.machines) }}</strong>
                   <button v-if="providersFor(node, ingredient.item_id).length" class="connect-button" :class="{ linked: connections[inputKey(node.id, ingredient.item_id)] }" :title="connections[inputKey(node.id, ingredient.item_id)] ? 'Change material source' : 'Connect a producer'" @click="activeInput = activeInput === inputKey(node.id, ingredient.item_id) ? '' : inputKey(node.id, ingredient.item_id)">{{ connections[inputKey(node.id, ingredient.item_id)] ? '↔' : '○' }}</button>
@@ -521,6 +586,6 @@ function linkPath(link: Connection) {
 .zoom-controls{display:flex;align-items:center;gap:7px}.zoom-controls .icon-button{font-size:13px}.icon-button:disabled{opacity:.4;cursor:default}
 
 .view-tabs{height:43px;flex:none;display:flex;align-items:stretch;gap:5px;padding:0 20px;border-bottom:1px solid #27302b;background:#151b17}.view-tab{position:relative;padding:0 14px;border:0;background:transparent;color:#8c988e;font:11px 'DM Sans',sans-serif;cursor:pointer}.view-tab:hover{color:#dce5dd}.view-tab.active{color:#c5e0c7}.view-tab.active:after{position:absolute;right:10px;bottom:-1px;left:10px;height:2px;background:#80b587;content:''}.view-count{color:#829085;font:9px 'DM Mono',monospace;letter-spacing:.08em}.data-view{min-height:0;flex:1;overflow:auto;background:#111713}.table-panel,.tree-panel{min-height:100%;padding:20px 22px}.table-intro{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:0 0 18px}.table-intro .eyebrow{margin-bottom:5px}.table-intro h2{margin:0;color:#e1e8e1;font-size:17px;font-weight:600;letter-spacing:-.025em;text-transform:capitalize}.table-intro>span{color:#7d8b7f;font:9px 'DM Mono',monospace;white-space:nowrap}.view-search{height:34px;display:flex;align-items:center;gap:8px;margin:0 0 17px;padding:0 10px;border:1px solid #303a32;border-radius:5px;background:#171e19;color:#89968b}.view-search>span{font-size:18px}.view-search input{width:100%;border:0;outline:0;background:transparent;color:#dce5dd;font:11px 'DM Sans',sans-serif}.view-search input::placeholder{color:#68766b}.table-scroll{overflow:auto;border:1px solid #2b352d;border-radius:6px}.planner-table{width:100%;border-collapse:collapse;font-size:10px;text-align:right}.planner-table thead{position:sticky;top:0;z-index:1;background:#1b241d}.planner-table th,.planner-table td{height:39px;padding:7px 12px;border-bottom:1px solid #28312a;white-space:nowrap}.planner-table thead th{color:#8c9b8d;font:8px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase}.planner-table tbody td{color:#c5d0c6;font:10px 'DM Mono',monospace}.planner-table tbody tr:hover{background:#19221b}.planner-table tbody th[scope=row]{color:#dbe3dc;text-align:left;font-size:10px;font-weight:500;text-transform:capitalize}.planner-table tbody th:first-child,.planner-table thead th:first-child{text-align:left}.table-item-icon{width:22px;height:22px;display:inline-grid;place-items:center;margin-right:8px;border:1px solid #39463a;border-radius:4px;background:#202920;color:#a8c8aa;font:9px 'DM Mono',monospace}.needs-supply{color:#e5bd84!important}.has-surplus{color:#a5d2a9!important}.building-name{min-width:130px}.products-cell{max-width:360px;overflow:hidden;text-overflow:ellipsis;text-align:left!important;color:#8f9d91!important;font:9px 'DM Sans',sans-serif!important}.machine-pill{display:inline-block;padding:4px 6px;border:1px solid #354438;border-radius:4px;background:#202a22;color:#acd0ae;font:9px 'DM Mono',monospace}.table-empty{padding:32px!important;color:#829085!important;text-align:center!important;font-family:'DM Sans',sans-serif!important}.tree-list{overflow:hidden;border:1px solid #2b352d;border-radius:6px}.tree-row{min-height:35px;display:flex;align-items:center;gap:9px;padding-top:5px;padding-right:12px;padding-bottom:5px;border-bottom:1px solid #242e27;color:#c5d0c6;font-size:10px}.tree-row:last-child{border-bottom:0}.tree-row:hover{background:#18211a}.tree-row strong{min-width:95px;color:#dfe6df;font-size:10px;font-weight:500;text-transform:capitalize}.tree-marker{width:14px;flex:none;color:#9ec4a1;text-align:center;font:11px 'DM Mono',monospace}.tree-ingredient .tree-marker{color:#829285}.tree-ingredient.is-external .tree-marker,.tree-ingredient.is-external .tree-detail{color:#d6b57f}.tree-detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#879589;font:9px 'DM Mono',monospace}.tree-count{margin-left:auto;color:#a8c8aa;font:9px 'DM Mono',monospace;white-space:nowrap}.view-empty{padding:70px 20px;text-align:center}.view-empty h2{margin:0 0 8px;color:#dce4dc;font-size:15px;font-weight:500}.view-empty p{margin:0;color:#849087;font-size:11px}
-@media(max-width:1100px){.planner-layout{grid-template-columns:230px minmax(400px,1fr)}.inspector{display:none}.sidebar{padding-left:10px;padding-right:10px}}
-@media(max-width:700px){.app-shell{height:auto;min-height:100vh;overflow:visible}.topbar{height:52px;padding:0 12px}.save-state{display:none}.view-tabs{height:40px;overflow-x:auto;padding:0 8px}.view-tab{padding:0 11px;white-space:nowrap}.planner-layout{display:flex;flex-direction:column;min-height:calc(100vh - 92px)}.sidebar{height:280px;flex:none;border-right:0;border-bottom:1px solid #27302b}.catalog-list{display:grid;grid-template-columns:1fr 1fr;align-content:start}.sidebar-tip{display:none}.main-area{height:calc(100vh - 372px);min-height:480px}.table-panel,.tree-panel{padding:15px 12px}.tree-row{gap:6px;padding-right:8px}.tree-row strong{min-width:72px}.tree-detail{font-size:8px}.planner-table th,.planner-table td{padding:7px 8px}.plan-toolbar{padding:0 10px}.canvas-viewport{min-height:0}.inspector{display:flex;min-height:300px;border-left:0;border-top:1px solid #27302b}.machine-card{width:280px}.flow-line{stroke-dasharray:4 4}}
+.category-strip{display:flex;gap:5px;overflow-x:auto;flex:none;margin:10px 0 1px;padding:0 0 5px;scrollbar-width:none}.category-strip::-webkit-scrollbar{display:none}.category-chip{display:flex;align-items:center;gap:6px;flex:none;padding:5px 8px;border:1px solid #303a32;border-radius:4px;background:#1a211c;color:#aeb9af;font-size:9px;text-transform:capitalize;white-space:nowrap;cursor:pointer}.category-chip:hover{border-color:#526553;color:#dce5dd}.category-chip.active{border-color:#607f61;background:#263428;color:#cae0ca}.category-chip span,.recipe-group-heading>span:last-child{color:#7e8d80;font:8px 'DM Mono',monospace}.recipe-group{margin-bottom:4px}.recipe-group-heading{display:flex;align-items:center;justify-content:space-between;padding:8px 4px 5px;color:#a6b2a7;font:8px 'DM Mono',monospace;letter-spacing:.09em;text-transform:uppercase}@media(max-width:1100px){.planner-layout{grid-template-columns:230px minmax(400px,1fr)}.inspector{display:none}.sidebar{padding-left:10px;padding-right:10px}}
+@media(max-width:700px){.app-shell{height:auto;min-height:100vh;overflow:visible}.topbar{height:52px;padding:0 12px}.save-state{display:none}.view-tabs{height:40px;overflow-x:auto;padding:0 8px}.view-tab{padding:0 11px;white-space:nowrap}.planner-layout{display:flex;flex-direction:column;min-height:calc(100vh - 92px)}.sidebar{height:280px;flex:none;border-right:0;border-bottom:1px solid #27302b}.catalog-list{display:block}.sidebar-tip{display:none}.main-area{height:calc(100vh - 372px);min-height:480px}.table-panel,.tree-panel{padding:15px 12px}.tree-row{gap:6px;padding-right:8px}.tree-row strong{min-width:72px}.tree-detail{font-size:8px}.planner-table th,.planner-table td{padding:7px 8px}.plan-toolbar{padding:0 10px}.canvas-viewport{min-height:0}.inspector{display:flex;min-height:300px;border-left:0;border-top:1px solid #27302b}.machine-card{width:280px}.flow-line{stroke-dasharray:4 4}}
 </style>
