@@ -249,6 +249,22 @@ function finishPan(event: PointerEvent) {
   panning.value = null
   canvas.value?.classList.remove('is-panning')
 }
+function connectedDemand(producerId: string) {
+  let demand = 0
+  for (const consumer of nodes.value) {
+    const recipe = recipeFor(consumer)
+    if (!recipe) continue
+    for (const ingredient of recipe.ingredients) {
+      if (connections.value[inputKey(consumer.id, ingredient.item_id)] === producerId) {
+        demand += ingredient.quantity * recipe.rate / recipe.batch * consumer.machines
+      }
+    }
+  }
+  return demand
+}
+function machinesForDemand(demand: number, rate: number) {
+  return Math.max(1, Math.ceil((demand - 1e-9) / rate))
+}
 function expandChain(root: MachineNode) {
   function expand(parent: MachineNode, path = new Set<string>()) {
     const recipe = recipeFor(parent)
@@ -268,9 +284,14 @@ function expandChain(root: MachineNode) {
       return { ingredient, demand, key, producer, producerRecipe, candidate }
     })
     for (const need of needs) {
-      if (need.producer && need.producerRecipe) {
-        need.producer.machines = Math.max(need.producer.machines, Math.ceil(need.demand / need.producerRecipe.rate))
-        expand(need.producer, nextPath)
+      const producer = need.producer ?? nodes.value.find(node => node.id !== parent.id && recipeFor(node)?.product_id === need.ingredient.item_id && (recipeFor(node)?.rate ?? 0) > 0 && !wouldCreateCycle(parent.id, node.id))
+      const producerRecipe = producer && recipeFor(producer)
+      if (producer && producerRecipe) {
+        connections.value[need.key] = producer.id
+        need.producer = producer
+        need.producerRecipe = producerRecipe
+        producer.machines = Math.max(producer.machines, machinesForDemand(connectedDemand(producer.id), producerRecipe.rate))
+        expand(producer, nextPath)
       }
     }
     const newNeeds = needs.filter(need => !need.producer && need.candidate)
@@ -285,7 +306,7 @@ function expandChain(root: MachineNode) {
         recipeId: candidate.id,
         x: parent.x - 384,
         y: Math.round((cursorY + branchHeight / 2 - machineCardHeight(candidate) / 2) / GRID) * GRID,
-        machines: Math.max(1, Math.ceil(need.demand / candidate.rate))
+        machines: machinesForDemand(need.demand, candidate.rate)
       }
       cursorY += branchHeight + TREE_GAP
       nodes.value.push(child)
