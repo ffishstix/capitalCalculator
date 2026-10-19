@@ -1,0 +1,203 @@
+{
+  "entries": [
+    {
+      "id": "recipe-menu-code-export",
+      "date": "2026-10-18",
+      "gameVersion": "V449",
+      "title": "Export generated recipes as game menu codes",
+      "summary": "Copy any optimized recipe as a CRRCP1 code, or export the whole generated menu as a single CRMENU1 code for quicker entry in game.",
+      "evidence": "The code prefixes and payload fields follow the community-verified CRRCP1 and CRMENU1 format already used by the menu code reader. Verify imported dishes in game after an update.",
+      "changes": [
+        {
+          "title": "Recipe menu code export",
+          "items": [
+            "Every generated candidate now has an Export as recipe code button that builds a single-dish CRRCP1 code with an editable name, station, price and servings.",
+            "The recipe checker's live mix can be exported the same way once the composition is valid.",
+            "A new Export full menu code button on the results section packs every distinct generated candidate into one CRMENU1 code, up to the game's twelve-dish limit.",
+            "The generated code is shown in a read-only field and copied with one click, so it can be pasted into the in-game menu importer or back into the menu code reader."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "v448-new-crafting-recipes",
+      "date": "2026-10-17",
+      "gameVersion": "V448",
+      "title": "V448: Electronic Roulette, Self-checkout Kiosk and Takeout Counter recipes",
+      "summary": "Three new crafting recipes, with ingredient calculators and complete factory production chains.",
+      "evidence": "Crafting definitions were checked against the latest version of the game on 17 October 2026. Verify important results in game after an update.",
+      "changes": [
+        {
+          "title": "New crafting recipes",
+          "items": [
+            "Added Electronic Roulette crafting at the Gaming Workshop, with batch quantities, materials, and production planning.",
+            "Added Self-checkout Kiosk crafting at the Electronics Bench, with batch quantities, materials, and production planning.",
+            "Added Takeout Counter crafting at the Metal Shop, with batch quantities, materials, and production planning.",
+            "The crafting reference now includes 264 recipes."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "power-climate-business-tools",
+      "date": "2026-10-14",
+      "gameVersion": "V457",
+      "title": "Power, climate, business and trading tools",
+      "summary": "Electricity, cooling, power-station, cash-runway, rent and market calculators, planner heat and power estimates, a combined shopping list, a menu-code reader, and an FAQ troubleshooter.",
+      "evidence": "Power draw, heat, temperature, rent, solvency, wage, lease and price tables were checked against a current version of the game. Verify important results in game after an update.",
+      "changes": [
+        {
+          "title": "New power and climate tools",
+          "items": [
+            "Estimate electricity bills from device, kitchen, survey and machine draw in running, idle and paused states.",
+            "Reference the regional power price curve between the published floor and ceiling, with the grid fuel mixes.",
+            "Plan room temperature, production slowdown and the air conditioners or heaters a room needs.",
+            "Compare coal, oil, hydro and wind generators, their fuel demand, operating margin and break-even price.",
+            "Gather a complete power-station build checklist from the power recipes."
+          ]
+        },
+        {
+          "title": "New business and property tools",
+          "items": [
+            "Combine revenue, rent, wages and electricity into an operating margin and a cash runway.",
+            "Model wages, hiring and heat slowdown for hired crews.",
+            "Estimate rent, lease terms and building value, and check auction bids and seizure buy-backs, all in the Business & property tool.",
+            "Reference commodity base prices and category spreads for market trading."
+          ]
+        },
+        {
+          "title": "Factory planner and statistics",
+          "items": [
+            "The planner now estimates machine heat, room temperature, cooling units and electricity cost for the machines it assigns.",
+            "Factory statistics show the same heat, cooling and power estimate alongside the bottleneck view.",
+            "Add a product straight from the planner to a combined shopping list and gather shared raw materials once.",
+            "Planner links to the logistics, resources and troubleshooting tools for sourcing external inputs."
+          ]
+        },
+        {
+          "title": "Crafting, logistics and restaurant updates",
+          "items": [
+            "Plan several products at once in a combined crafting shopping list with shared batches and leftovers.",
+            "Blueprints now cover power equipment, fuels, cooling and construction supplies with categories and search.",
+            "Logistics combines hauling, storage and transport throughput; resources combines mining and a survey notebook, and now lists coal as a ground resource.",
+            "The recipe calculator embeds the menu code reader, and answers factory problems as an FAQ with structured data for search.",
+            "Recipe candidates now show an estimated ingredient cost for reference."
+          ]
+        },
+        {
+          "title": "Analytics & feature flags",
+          "items": [
+            "The tools send privacy-conscious usage events to PostHog, alongside Vercel Web Analytics, so i can see which calculators help and improve them.",
+            "New tools can be rolled out or rolled back with PostHog feature flags; each defaults to on when PostHog is unavailable.",
+            "A footer notice explains the analytics. Recipe, factory and survey data still stay in your browser."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "v446-powergrid-recipes",
+      "date": "2026-10-09",
+      "gameVersion": "V446",
+      "title": "V446: Coal bunker, Coal Generator, Oil Generator, Wind Turbine, Water Turbine and Fuel Tank recipes",
+      "summary": "Six new crafting recipes, with ingredient calculators and complete factory production chains.",
+      "evidence": "Crafting definitions were checked against the latest version of the game on 9 October 2026. Verify important results in game after an update.",
+      "changes": [
+        {
+          "title": "New crafting recipes",
+          "items": [
+            "Added Coal Bunker crafting at the Metal Shop, with batch quantities, materials, and production planning.",
+            "Added Coal Generator crafting at the Machine Shop, with batch quantities, materials, and production planning.",
+            "Added Oil Generator crafting at the Machine Shop, with batch quantities, materials, and production planning.",
+            "Added Wind Turbine crafting at the Metal Shop, with batch quantities, materials, and production planning.",
+            "Added Water Turbine crafting at the Machine Shop, with batch quantities, materials, and production planning.",
+            "Added Fuel Tank crafting at the Metal Shop, with batch quantities, materials, and production planning.",
+            "The crafting reference now includes 261 recipes."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "v440-climate-recipes",
+      "date": "2026-10-07",
+      "gameVersion": "V440",
+      "title": "V440: Fan heater, Portable AC, Industrial heater and Industrial AC recipes",
+      "summary": "Four new crafting recipes, with ingredient calculators and complete factory production chains.",
+      "evidence": "Crafting definitions were checked against the latest version of the game on 7 October 2026. Verify important results in game after an update.",
+      "changes": [
+        {
+          "title": "New crafting recipes",
+          "items": [
+            "Added Fan Heater crafting at the Metal Shop, with batch quantities, materials, and production planning.",
+            "Added Portable Air Conditioner crafting at the Electronics Bench, with batch quantities, materials, and production planning.",
+            "Added Industrial Heater crafting at the Metal Shop, with batch quantities, materials, and production planning.",
+            "Added Industrial Air Conditioner crafting at the Electronics Bench, with batch quantities, materials, and production planning.",
+            "The crafting reference now includes 255 recipes."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "v438-climate-recipes",
+      "date": "2026-10-07",
+      "gameVersion": "V438",
+      "title": "V438: Space Heater and Air Conditioner recipes",
+      "summary": "Two new crafting recipes, with ingredient calculators and complete factory production chains.",
+      "evidence": "Crafting definitions were checked against the latest version of the game on 7 October 2026. Verify important results in game after an update.",
+      "changes": [
+        {
+          "title": "New crafting recipes",
+          "items": [
+            "Added Space Heater crafting at the Metal Shop, with batch quantities, materials, and production planning.",
+            "Added Air Conditioner crafting at the Electronics Bench, with batch quantities, materials, and production planning.",
+            "The crafting reference now includes 251 recipes."
+          ]
+        },
+        {
+          "title": "Website improvements",
+          "items": [
+            "Clearer search previews distinguish factory crafting from restaurant recipes.",
+            "Common crafting questions now include ingredient answers and links to the full calculators.",
+            "New recipe links and refreshed discovery references help players find the latest crafting data."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "community-tools",
+      "date": "2026-10-03",
+      "gameVersion": "v435",
+      "title": "More tools for factories and restaurants",
+      "summary": "New crafting and resource tools, easier recipe sharing, and more reliable factory plans.",
+      "evidence": "Restaurant, crafting, and equipment data was checked against a current version of the game. This is not a live connection; check important results in game after an update.",
+      "changes": [
+        {
+          "title": "New tools",
+          "items": [
+            "Find ingredients and crafting instructions for all 249 products.",
+            "Calculate batches, materials, and leftovers for a complete crafting chain.",
+            "Compare storage options, calculate hauling trips, and estimate mining output.",
+            "Start a factory plan from a ready-made blueprint."
+          ]
+        },
+        {
+          "title": "Easier planning and sharing",
+          "items": [
+            "Factory plans now include enough machines and ingredients for full-speed production.",
+            "Applying a plan keeps your owned machines and existing supplies unchanged.",
+            "Find restaurant recipes using only the ingredients you can get.",
+            "Save restaurants and recipes in your browser, share them, and download backups.",
+            "Preview shared factory blueprints before saving them."
+          ]
+        },
+        {
+          "title": "Fixes and updates",
+          "items": [
+            "Crafting pages are easier to find through search and related recipe links.",
+            "Game data updates now live here, with links from every tool.",
+            "Improved headings, spacing, and checklists in the mining, storage, hauling, and blueprint guides."
+          ]
+        }
+      ]
+    }
+  ]
+}

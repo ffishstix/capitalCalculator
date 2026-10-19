@@ -1,0 +1,21 @@
+# Dependencies/build output
+node_modules/
+.nuxt/
+.output/
+dist/
+build/
+coverage/
+*.sqlite-shm
+*.sqlite-wal
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and editor/OS files
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
