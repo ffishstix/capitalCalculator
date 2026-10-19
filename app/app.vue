@@ -4,6 +4,10 @@ type Ingredient = { item_id: string; name: string; quantity: number }
 type Recipe = { id: string; label: string; station: string; batch: number; rate: number; product_id: string; product: string; ingredients: Ingredient[] }
 type MachineNode = { id: string; recipeId: string; x: number; y: number; machines: number }
 type Connection = { key: string; from: MachineNode; to: MachineNode; ingredient: Ingredient; produced: number }
+type GraphEndpoint = { id: string; x: number; y: number }
+type GraphLayer = { itemId: string; name: string; rate: number; row: number }
+type GraphPanel = GraphEndpoint & { rows: GraphLayer[] }
+type GraphConnection = { key: string; kind: 'recipe' | 'input' | 'output'; from: GraphEndpoint; to: GraphEndpoint; produced: number; inputKey?: string; row?: number }
 type PlannerView = 'network' | 'tree' | 'items' | 'buildings' | 'targets' | 'prices'
 type TargetSection = 'outputs' | 'inputs' | 'options'
 type ProductionTarget = { id: string; itemId: string; recipeId: string; rate: number }
@@ -12,19 +16,23 @@ type PlanSnapshot = { nodes: MachineNode[]; connections: Record<string, string>;
 type TreeRow = { key: string; depth: number; kind: 'product' | 'ingredient'; name: string; detail: string; machines?: number; external?: boolean; nodeId?: string; hasChildren?: boolean; collapsed?: boolean }
 type ItemBalance = { id: string; name: string; produced: number; required: number; connected: number; external: number; surplus: number }
 type BuildingSummary = { id: string; name: string; recipeCount: number; machines: number; products: string[] }
-type MarketQuote = { symbol: string; name: string; price: number; units24h: number }
-type MarketData = { asOf: string; quotes: MarketQuote[]; source: string }
+type MarketQuote = { symbol: string; name: string; price: number; units24h: number; volumeKnown?: boolean; dayChangePercent?: number | null; previousPrice: number | null; history: number[]; changeSincePreviousPercent: number | null }
+type MarketData = { asOf: string; refreshedAt: string | null; refreshOutcome: string; refreshIntervalHours: number; catalogueCoverage?: { priced: number; total: number }; quotes: MarketQuote[]; source: string }
+type OptimizerInputCost = { name: string; amountPerItem: number; unitCost: number; totalCost: number; routeRecipe?: Recipe }
+type OptimizerOpportunity = { recipe: Recipe; outputPrice: number; inputCostPerItem: number; marginPerItem: number; marginPercent: number; profitPerMinute: number; outputVolumeShare: number | undefined; inputCosts: OptimizerInputCost[]; routeRecipes: Map<string, Recipe> }
 type RecipeGroup = { id: string; name: string; recipes: Recipe[] }
 type PortPoint = { x: number; y: number }
 const recipes = ref<Recipe[]>([])
 const recipeById = computed(() => new Map(recipes.value.map(recipe => [recipe.id, recipe])))
 const metadata = ref<{ recipeCount: number; itemCount: number; retrievedAt: string } | null>(null)
 const marketData = ref<MarketData | null>(null)
+const priceOverrides = ref<Record<string, { buy?: number; sell?: number }>>({})
 const marketLoading = ref(false)
 const marketError = ref('')
 const search = ref('')
 const selectedCategory = ref('all')
 const viewSearch = ref('')
+const optimizerSearch = ref('')
 const activeView = ref<PlannerView>('network')
 const plannerTabs: [PlannerView, string][] = [['network', 'Network Graph'], ['tree', 'Tree List'], ['items', 'Items'], ['buildings', 'Buildings'], ['targets', 'Targets'], ['prices', 'Prices']]
 const targetSections: [TargetSection, string][] = [['outputs', 'Outputs'], ['inputs', 'Inputs'], ['options', 'Options']]
@@ -35,6 +43,7 @@ const autoArrangeGenerated = ref(true)
 const preserveExistingPlan = ref(true)
 const nodes = ref<MachineNode[]>([])
 const selectedNodeIds = ref<string[]>([])
+const compactGraph = ref(0)
 const collapsedTreeNodeIds = ref<string[]>([])
 const connections = ref<Record<string, string>>({})
 const activeInput = ref('')
@@ -61,6 +70,7 @@ const pending = ref(true)
 const error = ref('')
 const zoom = ref(100)
 const storageKey = 'capitalrift-factory-plan-v1'
+const priceOverridesStorageKey = 'capitalrift-price-overrides-v1'
 const GRID = 24
 const TREE_GAP = 24
 const CANVAS_GROW = 2400
@@ -83,6 +93,10 @@ onMounted(async () => {
     }
   } catch { localStorage.removeItem(storageKey) }
   try {
+    const savedOverrides = localStorage.getItem(priceOverridesStorageKey)
+    if (savedOverrides) priceOverrides.value = JSON.parse(savedOverrides)
+  } catch { localStorage.removeItem(priceOverridesStorageKey) }
+  try {
     const [catalog, sourceInfo] = await Promise.all([
       $fetch<Recipe[]>('/api/recipes'),
       $fetch<typeof metadata.value>('/api/meta')
@@ -93,6 +107,9 @@ onMounted(async () => {
     nodes.value = nodes.value.filter(node => catalog.some(recipe => recipe.id === node.recipeId))
     await nextTick()
     centerCanvas()
+    // Load quotes with the planner so known prices are visible across every view,
+    // not only after opening the Prices tab.
+    void loadMarketPrices()
   } catch { error.value = 'Could not load the recipe catalogue. Refresh to try again.' }
   finally { pending.value = false }
 })
@@ -129,6 +146,28 @@ function searchShortcut(event: KeyboardEvent) {
   }
 }
 
+function zoomCanvasWheel(event: WheelEvent) {
+  if (!event.ctrlKey || !canvas.value) return
+  event.preventDefault()
+
+  const viewport = canvas.value
+  const bounds = viewport.getBoundingClientRect()
+  const cursorX = event.clientX - bounds.left
+  const cursorY = event.clientY - bounds.top
+  const oldScrollLeft = viewport.scrollLeft
+  const oldScrollTop = viewport.scrollTop
+  const oldScale = zoom.value / 100
+  const nextScale = Math.min(1.4, Math.max(0.6, oldScale * (1.1 ** (-event.deltaY / 100))))
+  const nextZoom = Math.min(140, Math.max(60, Math.round(nextScale * 20) * 5))
+  if (nextZoom === zoom.value) return
+
+  zoom.value = nextZoom
+  requestAnimationFrame(() => {
+    viewport.scrollLeft = (oldScrollLeft + cursorX) / oldScale * (nextZoom / 100) - cursorX
+    viewport.scrollTop = (oldScrollTop + cursorY) / oldScale * (nextZoom / 100) - cursorY
+  })
+}
+
 watch([nodes, connections, productionTargets, importedInputs, autoArrangeGenerated, preserveExistingPlan], () => {
   if (import.meta.client) {
     if (saveTimer) clearTimeout(saveTimer)
@@ -138,6 +177,10 @@ watch([nodes, connections, productionTargets, importedInputs, autoArrangeGenerat
 watch(activeView, view => {
   if (view === 'network') void nextTick(centerCanvas)
   if (view === 'prices') void loadMarketPrices()
+})
+watch(compactGraph, () => {
+  portOffsets.clear()
+  portPositions.value = {}
 })
 
 function snapshotPlan(): PlanSnapshot {
@@ -461,15 +504,20 @@ function finishCatalogDrag() {
   draggedRecipe.value = null
   dragPreview.value = null
 }
-function machineCardHeight(recipe: Recipe) { return 250 + recipe.ingredients.length * 29 }
-function estimateBranchHeight(recipe: Recipe, path = new Set<string>()): number {
+function machineCardHeight(recipe?: Recipe) {
+  // Saved plans are restored before the catalogue request completes. Keep graph
+  // layout safe while those recipe IDs are temporarily unresolved.
+  const ingredientCount = recipe?.ingredients?.length ?? 0
+  return compactGraph.value ? 82 + ingredientCount * 22 : 250 + ingredientCount * 29
+}
+function estimateBranchHeight(recipe: Recipe, path = new Set<string>(), recipeChooser?: (itemId: string) => Recipe | undefined): number {
   const ownHeight = machineCardHeight(recipe)
   if (path.has(recipe.product_id)) return ownHeight
   const nextPath = new Set(path).add(recipe.product_id)
   const children = recipe.ingredients
-    .map(ingredient => recipesForItem(ingredient.item_id)[0])
+    .map(ingredient => recipeChooser ? recipeChooser(ingredient.item_id) : recipesForItem(ingredient.item_id)[0])
     .filter((candidate): candidate is Recipe => !!candidate)
-  const childrenHeight = children.reduce((sum, child) => sum + estimateBranchHeight(child, nextPath), 0) + Math.max(0, children.length - 1) * TREE_GAP
+  const childrenHeight = children.reduce((sum, child) => sum + estimateBranchHeight(child, nextPath, recipeChooser), 0) + Math.max(0, children.length - 1) * TREE_GAP
   return Math.max(ownHeight, childrenHeight)
 }
 function removeNode(nodeId: string) {
@@ -720,7 +768,7 @@ function consolidateOutputNodes() {
   connections.value = result.connections
   selectedNodeIds.value = result.selectedNodeIds
 }
-function expandChain(root: MachineNode, relayout = true) {
+function expandChain(root: MachineNode, relayout = true, recipeChooser?: (itemId: string) => Recipe | undefined) {
   if (relayout) recordPlanChange()
   function expand(parent: MachineNode, path = new Set<string>()) {
     const recipe = recipeFor(parent)
@@ -736,11 +784,11 @@ function expandChain(root: MachineNode, relayout = true) {
         producer = undefined
         producerRecipe = undefined
       }
-      const candidate = producerRecipe ?? (isImportedItem(ingredient.item_id) ? undefined : recipesForItem(ingredient.item_id)[0])
+      const candidate = producerRecipe ?? (isImportedItem(ingredient.item_id) ? undefined : recipeChooser ? recipeChooser(ingredient.item_id) : recipesForItem(ingredient.item_id)[0])
       return { ingredient, demand, key, producer, producerRecipe, candidate }
     })
     for (const need of needs) {
-      const producer = need.producer ?? (!isImportedItem(need.ingredient.item_id) ? (nodesByProduct.value.get(need.ingredient.item_id) ?? []).find(node => node.id !== parent.id && !wouldCreateCycle(parent.id, node.id)) : undefined)
+      const producer = need.producer ?? (!isImportedItem(need.ingredient.item_id) ? (nodesByProduct.value.get(need.ingredient.item_id) ?? []).find(node => node.id !== parent.id && (!recipeChooser || recipeFor(node)?.id === recipeChooser(need.ingredient.item_id)?.id) && !wouldCreateCycle(parent.id, node.id)) : undefined)
       const producerRecipe = producer && recipeFor(producer)
       if (producer && producerRecipe) {
         connections.value[need.key] = producer.id
@@ -757,7 +805,7 @@ function expandChain(root: MachineNode, relayout = true) {
       expand(producer, nextPath)
     }
     const newNeeds = needs.filter(need => !need.producer && need.candidate)
-    const branchHeights = newNeeds.map(need => estimateBranchHeight(need.candidate!, nextPath))
+    const branchHeights = newNeeds.map(need => estimateBranchHeight(need.candidate!, nextPath, recipeChooser))
     const stackHeight = branchHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, branchHeights.length - 1) * TREE_GAP
     let cursorY = parent.y + machineCardHeight(recipe) / 2 - stackHeight / 2
     newNeeds.forEach((need, index) => {
@@ -832,6 +880,233 @@ function buildProductionTargets() {
 }
 
 const network = computed(() => calculateNetworkSummary(nodes.value, connections.value, recipeById.value))
+const quoteByItemName = computed(() => new Map((marketData.value?.quotes ?? []).map(quote => [quote.name.trim().toLocaleLowerCase(), quote])))
+function priceFor(name: string, side: 'buy' | 'sell' = 'buy') {
+  const quote = quoteByItemName.value.get(name.trim().toLocaleLowerCase())
+  return quote ? priceOverrides.value[quote.symbol]?.[side] ?? quote.price : undefined
+}
+function itemPrice(name: string, side: 'buy' | 'sell' = 'buy') {
+  const price = priceFor(name, side)
+  return price === undefined ? '$...' : `$${price.toFixed(2)}`
+}
+function setPriceOverride(symbol: string, side: 'buy' | 'sell', value: string) {
+  const overrides = { ...priceOverrides.value }
+  const entry = { ...overrides[symbol] }
+  const parsed = value.trim() === '' ? undefined : Number(value)
+  if (parsed !== undefined && (!Number.isFinite(parsed) || parsed < 0)) return
+  if (parsed === undefined) delete entry[side]
+  else entry[side] = parsed
+  if (entry.buy === undefined && entry.sell === undefined) delete overrides[symbol]
+  else overrides[symbol] = entry
+  priceOverrides.value = overrides
+  localStorage.setItem(priceOverridesStorageKey, JSON.stringify(overrides))
+}
+function resetPriceOverrides(symbol: string) {
+  const overrides = { ...priceOverrides.value }
+  delete overrides[symbol]
+  priceOverrides.value = overrides
+  localStorage.setItem(priceOverridesStorageKey, JSON.stringify(overrides))
+}
+function volumeSharePercent(ratePerMinute: number, units24h: number | undefined) {
+  if (units24h === undefined || units24h <= 0) return undefined
+  return ratePerMinute * 1440 / units24h * 100
+}
+function volumeShareClass(share: number | undefined) {
+  return share === undefined ? '' : share >= 100 ? 'liquidity-high' : share >= 10 ? 'liquidity-watch' : ''
+}
+function sparklinePoints(values: number[]) {
+  if (values.length < 2) return ''
+  const min = Math.min(...values)
+  const range = Math.max(...values) - min || 1
+  return values.map((value, index) => `${(index / (values.length - 1)) * 100},${22 - ((value - min) / range) * 20}`).join(' ')
+}
+function processProfit(recipe: Recipe | undefined, machineCount = 1): number | undefined {
+  if (!recipe) return undefined
+  const outputPrice = priceFor(recipe.product, 'sell')
+  if (outputPrice === undefined) return undefined
+  let profit = outputPrice * recipe.rate * machineCount
+  for (const ingredient of recipe.ingredients) {
+    const inputPrice = priceFor(ingredient.name, 'buy')
+    if (inputPrice === undefined) return undefined
+    profit -= inputPrice * ingredient.quantity * recipe.rate / recipe.batch * machineCount
+  }
+  return profit
+}
+function profitLabel(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) return '$... / min'
+  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
+  return `${sign}$${Math.abs(value).toFixed(2)} / min`
+}
+const graphPanels = computed(() => {
+  const producedByInput = new Map(network.value.connectionRows.map(link => [link.key, link.produced]))
+  const inputRows = network.value.external.map((item, row) => ({ itemId: item.id, name: item.name, rate: item.amount, row }))
+  const inputRowById = new Map(inputRows.map(item => [item.itemId, item.row]))
+  const inputFlows: GraphConnection[] = []
+  for (const node of nodes.value) {
+    const recipe = recipeFor(node)
+    if (!recipe) continue
+            recipe.ingredients.forEach(ingredient => {
+      const portKey = inputKey(node.id, ingredient.item_id)
+      const demand = ingredient.quantity * recipe.rate / recipe.batch * node.machines
+      const missing = Math.max(0, demand - (producedByInput.get(portKey) ?? 0))
+      if (missing <= 0.000001) return
+      const row = inputRowById.get(ingredient.item_id)
+      if (row === undefined) return
+      inputFlows.push({ key: `input:${ingredient.item_id}:${node.id}`, kind: 'input', from: { id: 'input-panel', x: 0, y: 0 }, to: node, inputKey: portKey, row, produced: missing })
+    })
+  }
+  const consumedProducts = new Set(Object.values(connections.value))
+  const outputIds = new Set<string>(nodes.value.length ? productionTargets.value.filter(target => target.itemId && target.rate > 0).map(target => target.itemId) : [])
+  for (const node of nodes.value) {
+    const recipe = recipeFor(node)
+    if (recipe && !consumedProducts.has(node.id)) outputIds.add(recipe.product_id)
+  }
+  const outputRows = [...outputIds].map(itemId => {
+    const producers = nodesByProduct.value.get(itemId) ?? []
+    const product = productOptions.value.find(item => item.id === itemId)
+    const targetRate = productionTargets.value.filter(target => target.itemId === itemId).reduce((sum, target) => sum + target.rate, 0)
+    const producedRate = producers.reduce((sum, node) => sum + (recipeFor(node)?.rate ?? 0) * node.machines, 0)
+    return { itemId, name: product?.name ?? itemId, rate: producedRate || targetRate, producers }
+  }).sort((a, b) => a.name.localeCompare(b.name)).map((item, row) => ({ ...item, row }))
+  const outputRowById = new Map(outputRows.map(item => [item.itemId, item.row]))
+  const outputFlows: GraphConnection[] = outputRows.flatMap(item => item.producers.map(producer => ({
+    key: `output:${item.itemId}:${producer.id}`,
+    kind: 'output' as const,
+    from: producer,
+    to: { id: 'output-panel', x: 0, y: 0 },
+    row: outputRowById.get(item.itemId)!,
+    produced: (recipeFor(producer)?.rate ?? 0) * producer.machines
+  })))
+  const graphTop = Math.min(...nodes.value.map(node => node.y))
+  const graphBottom = Math.max(...nodes.value.map(node => node.y + machineCardHeight(recipeFor(node)!)))
+  const inputPanel: GraphPanel | undefined = inputRows.length ? {
+    id: 'input-panel', x: Math.min(...nodes.value.map(node => node.x)) - 340,
+    y: (graphTop + graphBottom - (48 + inputRows.length * 29)) / 2,
+    rows: inputRows
+  } : undefined
+  const outputPanel: GraphPanel | undefined = outputRows.length ? {
+    id: 'output-panel', x: Math.max(...nodes.value.map(node => node.x + 300)) + 80,
+    y: (graphTop + graphBottom - (48 + outputRows.length * 29)) / 2,
+    rows: outputRows
+  } : undefined
+  const allFlows = [...network.value.connectionRows.map(link => ({ key: link.key, kind: 'recipe' as const, from: link.from, to: link.to, inputKey: link.key, produced: link.produced })), ...inputFlows, ...outputFlows]
+  if (inputPanel) for (const flow of inputFlows) flow.from = inputPanel
+  if (outputPanel) for (const flow of outputFlows) flow.to = outputPanel
+  return { input: inputPanel, output: outputPanel, connections: allFlows }
+})
+const graphConnections = computed<GraphConnection[]>(() => graphPanels.value.connections)
+const totalProfitPerMinute = computed<number | undefined>(() => {
+  let total = 0
+  for (const item of network.value.surplus) {
+    const price = priceFor(item.name, 'sell')
+    if (price === undefined) return undefined
+    total += price * item.amount
+  }
+  for (const item of network.value.external) {
+    const price = priceFor(item.name, 'buy')
+    if (price === undefined) return undefined
+    total -= price * item.amount
+  }
+  return total
+})
+const planEconomics = computed(() => {
+  const valueRows = (items: Array<{ id: string; name: string; amount: number }>, side: 'buy' | 'sell') => {
+    const rows = items.map(item => {
+      const quote = quoteByItemName.value.get(item.name.trim().toLocaleLowerCase())
+      const price = priceFor(item.name, side)
+      return { ...item, quote, price, valuePerMinute: price === undefined ? undefined : price * item.amount }
+    })
+    const knownTotal = rows.reduce((sum, row) => sum + (row.valuePerMinute ?? 0), 0)
+    return { rows, knownTotal, pricedCount: rows.filter(row => row.quote).length, unpricedCount: rows.filter(row => !row.quote).length }
+  }
+  const sales = valueRows(network.value.surplus, 'sell')
+  const costs = valueRows(network.value.external, 'buy')
+  const complete = sales.unpricedCount === 0 && costs.unpricedCount === 0
+  return { sales, costs, netKnown: sales.knownTotal - costs.knownTotal, complete }
+})
+const optimizerOpportunities = computed<OptimizerOpportunity[]>(() => {
+  if (!marketData.value || !recipes.value.length) return []
+  type ItemRoute = { unitCost: number; recipes: Map<string, Recipe> }
+  const routeCache = new Map<string, ItemRoute | undefined>()
+  function cheapestRoute(itemId: string, path = new Set<string>()): ItemRoute | undefined {
+    const name = materialOptions.value.find(item => item.id === itemId)?.name
+    const buyPrice = name ? priceFor(name, 'buy') : undefined
+    if (path.has(itemId)) return buyPrice !== undefined ? { unitCost: buyPrice, recipes: new Map() } : undefined
+    const cacheKey = `${itemId}|${[...path].sort().join(',')}`
+    if (routeCache.has(cacheKey)) return routeCache.get(cacheKey)
+    let best: ItemRoute | undefined = buyPrice !== undefined ? { unitCost: buyPrice, recipes: new Map() } : undefined
+    const nextPath = new Set(path).add(itemId)
+    for (const recipe of recipesForItem(itemId)) {
+      let unitCost = 0
+      const routeRecipes = new Map<string, Recipe>()
+      let complete = true
+      for (const ingredient of recipe.ingredients) {
+        const ingredientRoute = cheapestRoute(ingredient.item_id, nextPath)
+        if (!ingredientRoute) { complete = false; break }
+        unitCost += ingredient.quantity / recipe.batch * ingredientRoute.unitCost
+        for (const [routedItemId, routedRecipe] of ingredientRoute.recipes) routeRecipes.set(routedItemId, routedRecipe)
+      }
+      if (complete && (!best || unitCost < best.unitCost)) {
+        routeRecipes.set(itemId, recipe)
+        best = { unitCost, recipes: routeRecipes }
+      }
+    }
+    routeCache.set(cacheKey, best)
+    return best
+  }
+
+  const opportunities: OptimizerOpportunity[] = []
+  for (const recipe of recipes.value) {
+    const outputPrice = priceFor(recipe.product, 'sell')
+    if (outputPrice === undefined || recipe.rate <= 0) continue
+    const outputQuote = quoteByItemName.value.get(recipe.product.trim().toLocaleLowerCase())
+    let inputCostPerItem = 0
+    const routeRecipes = new Map<string, Recipe>()
+    const inputCosts: OptimizerInputCost[] = []
+    let complete = true
+    const path = new Set([recipe.product_id])
+    for (const ingredient of recipe.ingredients) {
+      const route = cheapestRoute(ingredient.item_id, path)
+      if (!route) { complete = false; break }
+      const amountPerItem = ingredient.quantity / recipe.batch
+      const totalCost = amountPerItem * route.unitCost
+      inputCostPerItem += totalCost
+      inputCosts.push({ name: ingredient.name, amountPerItem, unitCost: route.unitCost, totalCost, routeRecipe: route.recipes.get(ingredient.item_id) })
+      for (const [itemId, inputRecipe] of route.recipes) routeRecipes.set(itemId, inputRecipe)
+    }
+    const marginPerItem = outputPrice - inputCostPerItem
+    const profitPerMinute = marginPerItem * recipe.rate
+    if (complete) {
+      routeRecipes.set(recipe.product_id, recipe)
+      opportunities.push({ recipe, outputPrice, inputCostPerItem, marginPerItem, marginPercent: outputPrice > 0 ? marginPerItem / outputPrice * 100 : 0, profitPerMinute, outputVolumeShare: outputQuote ? volumeSharePercent(recipe.rate, outputQuote.units24h) : undefined, inputCosts, routeRecipes })
+    }
+  }
+  return opportunities.sort((a, b) => b.profitPerMinute - a.profitPerMinute || a.recipe.product.localeCompare(b.recipe.product))
+})
+const filteredOptimizerOpportunities = computed(() => {
+  const needle = optimizerSearch.value.trim().toLocaleLowerCase()
+  return optimizerOpportunities.value.filter(({ recipe }) => !needle || `${recipe.product} ${recipe.label} ${recipe.station}`.toLocaleLowerCase().includes(needle))
+})
+const nextMarketCheck = computed(() => marketData.value?.refreshedAt
+  ? new Date(Date.parse(marketData.value.refreshedAt) + marketData.value.refreshIntervalHours * 60 * 60 * 1000).toLocaleString()
+  : undefined)
+
+function buildOptimizedChain(opportunity: OptimizerOpportunity) {
+  recordPlanChange()
+  const index = nodes.value.length
+  const root: MachineNode = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recipeId: opportunity.recipe.id,
+    x: 48 + (index % 4) * 350,
+    y: 48 + Math.floor(index / 4) * 420,
+    machines: 1
+  }
+  nodes.value.push(root)
+  expandChain(root, false, itemId => opportunity.routeRecipes.get(itemId))
+  arrangeNetwork()
+  activeView.value = 'network'
+  void nextTick(centerCanvas)
+}
 
 const viewTitle = computed(() => ({ network: 'Network Graph', tree: 'Tree List', items: 'Items', buildings: 'Buildings', targets: 'Production Targets', prices: 'Prices' })[activeView.value])
 const catalogueAgeDays = computed(() => metadata.value ? Math.max(0, Math.floor((Date.now() - new Date(metadata.value.retrievedAt).getTime()) / 86_400_000)) : 0)
@@ -912,10 +1187,10 @@ const filteredMarketQuotes = computed(() => {
 })
 
 const boardBounds = computed(() => ({
-  left: Math.min(canvasExtent.value.left, ...nodes.value.map(node => node.x - 80)),
-  top: Math.min(canvasExtent.value.top, ...nodes.value.map(node => node.y - 80)),
-  right: Math.max(canvasExtent.value.right, ...nodes.value.map(node => node.x + 420)),
-  bottom: Math.max(canvasExtent.value.bottom, ...nodes.value.map(node => node.y + 620))
+  left: Math.min(canvasExtent.value.left, ...nodes.value.map(node => node.x - 80), graphPanels.value.input?.x ?? Infinity),
+  top: Math.min(canvasExtent.value.top, ...nodes.value.map(node => node.y - 80), graphPanels.value.input?.y ?? Infinity, graphPanels.value.output?.y ?? Infinity),
+  right: Math.max(canvasExtent.value.right, ...nodes.value.map(node => node.x + 420), (graphPanels.value.output?.x ?? -Infinity) + 250),
+  bottom: Math.max(canvasExtent.value.bottom, ...nodes.value.map(node => node.y + 620), (graphPanels.value.input?.y ?? -Infinity) + 48 + (graphPanels.value.input?.rows.length ?? 0) * 29, (graphPanels.value.output?.y ?? -Infinity) + 48 + (graphPanels.value.output?.rows.length ?? 0) * 29)
 }))
 const boardWidth = computed(() => boardBounds.value.right - boardBounds.value.left)
 const boardHeight = computed(() => boardBounds.value.bottom - boardBounds.value.top)
@@ -1009,17 +1284,32 @@ function centerCanvas() {
     canvas.value.scrollTo({ left: Math.max(0, -boardBounds.value.left * scale - canvas.value.clientWidth / 2), top: Math.max(0, -boardBounds.value.top * scale - canvas.value.clientHeight / 2), behavior: 'smooth' })
     return
   }
-  const minX = Math.min(...nodes.value.map(node => node.x))
-  const minY = Math.min(...nodes.value.map(node => node.y))
-  const maxX = Math.max(...nodes.value.map(node => node.x + 300))
-  const maxY = Math.max(...nodes.value.map(node => node.y + 220))
+  const allGraphNodes = [
+    ...nodes.value.map(node => ({ x: node.x, y: node.y, width: compactGraph.value ? 260 : 300, height: machineCardHeight(recipeFor(node)!) })),
+    ...(graphPanels.value.input ? [{ x: graphPanels.value.input.x, y: graphPanels.value.input.y, width: 250, height: 42 + graphPanels.value.input.rows.length * 29 }] : []),
+    ...(graphPanels.value.output ? [{ x: graphPanels.value.output.x, y: graphPanels.value.output.y, width: 250, height: 42 + graphPanels.value.output.rows.length * 29 }] : [])
+  ]
+  const minX = Math.min(...allGraphNodes.map(node => node.x))
+  const minY = Math.min(...allGraphNodes.map(node => node.y))
+  const maxX = Math.max(...allGraphNodes.map(node => node.x + node.width))
+  const maxY = Math.max(...allGraphNodes.map(node => node.y + node.height))
   canvas.value.scrollTo({ left: Math.max(0, ((minX + maxX) / 2 - boardBounds.value.left) * scale - canvas.value.clientWidth / 2), top: Math.max(0, ((minY + maxY) / 2 - boardBounds.value.top) * scale - canvas.value.clientHeight / 2), behavior: 'smooth' })
 }
 function portPosition(key: string, fallback: PortPoint) { return portPositions.value[key] ?? fallback }
-function linkPath(link: Connection) {
-  const start = portPosition(`output:${link.from.id}`, { x: link.from.x + 300, y: link.from.y + 128 })
-  const ingredientIndex = recipeFor(link.to)?.ingredients.findIndex(item => item.item_id === link.ingredient.item_id) ?? 0
-  const end = portPosition(`input:${link.key}`, { x: link.to.x, y: link.to.y + 180 + ingredientIndex * 29 })
+function linkStart(link: GraphConnection) {
+  if (link.kind === 'input') return { x: link.from.x + 250, y: link.from.y + 46 + (link.row ?? 0) * 29 }
+  return portPosition(`output:${link.from.id}`, { x: link.from.x + 300, y: link.from.y + 128 })
+}
+function linkEnd(link: GraphConnection) {
+  if (link.kind === 'output') return { x: link.to.x, y: link.to.y + 46 + (link.row ?? 0) * 29 }
+  const inputPortKey = link.inputKey ?? link.key
+  const consumer = nodesById.value.get(link.to.id)
+  const ingredientIndex = consumer ? recipeFor(consumer)?.ingredients.findIndex(item => item.item_id === inputPortKey.slice(inputPortKey.lastIndexOf(':') + 1)) ?? 0 : 0
+  return portPosition(`input:${inputPortKey}`, { x: link.to.x, y: link.to.y + (compactGraph.value ? 48 : 180) + ingredientIndex * (compactGraph.value ? 22 : 29) })
+}
+function linkPath(link: GraphConnection) {
+  const start = linkStart(link)
+  const end = linkEnd(link)
   const direction = end.x >= start.x ? 1 : -1
   const curve = Math.max(50, Math.abs(end.x - start.x) * 0.48)
   return `M ${start.x} ${start.y} C ${start.x + direction * curve} ${start.y}, ${end.x - direction * curve} ${end.y}, ${end.x} ${end.y}`
@@ -1058,39 +1348,58 @@ function linkPath(link: Connection) {
           <p v-if="pending" class="empty-state">Loading catalogue…</p>
           <p v-else-if="!filteredRecipes.length" class="empty-state">No matching recipes.</p>
         </div>
-        <div class="sidebar-tip"><span class="tip-dot" />Click or drag recipes onto the graph to add outputs. Select nodes to move them together; right-click and drag the grid to pan.</div>
+        <div class="sidebar-tip"><span class="tip-dot" />Click or drag recipes onto the graph. Select nodes to move them together; right-click and drag to pan, or hold Ctrl and scroll to zoom.</div>
       </aside>
 
       <section class="main-area">
         <div class="plan-toolbar">
           <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong></div>
-          <div v-if="activeView === 'network'" class="toolbar-actions"><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="icon-button" title="Center machines" aria-label="Center machines" @click="centerCanvas">⌖</button></div>
-          <span v-else-if="activeView === 'prices'" class="view-count">{{ marketData ? `${marketData.quotes.length} LIVE QUOTES` : 'LIVE MARKET' }}</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
+          <div v-if="activeView === 'network'" class="toolbar-actions"><label class="density-control"><span>Detailed</span><input v-model.number="compactGraph" type="range" min="0" max="1" step="1" aria-label="Graph detail"><span>Compact</span></label><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="icon-button" title="Center machines" aria-label="Center machines" @click="centerCanvas">⌖</button></div>
+          <span v-else-if="activeView === 'prices'" class="view-count">{{ marketData ? `${marketData.catalogueCoverage?.priced ?? marketData.quotes.length} / ${marketData.catalogueCoverage?.total ?? metadata?.itemCount ?? '?'} ITEMS PRICED` : 'LIVE MARKET' }}</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
         </div>
-        <div v-show="activeView === 'network'" ref="canvas" class="canvas-viewport" :class="{ 'is-panning': panning }" @pointerdown="startSelectOrPan" @pointermove="selectOrPanMove" @pointerup="finishSelectOrPan" @pointercancel="finishSelectOrPan" @dragenter.prevent="updateDragPreview" @dragover.prevent="updateDragPreview" @drop.prevent="dropCatalogRecipe" @contextmenu.prevent>
+        <div v-show="activeView === 'network'" ref="canvas" class="canvas-viewport" :class="{ 'is-panning': panning }" @wheel="zoomCanvasWheel" @pointerdown="startSelectOrPan" @pointermove="selectOrPanMove" @pointerup="finishSelectOrPan" @pointercancel="finishSelectOrPan" @dragenter.prevent="updateDragPreview" @dragover.prevent="updateDragPreview" @drop.prevent="dropCatalogRecipe" @contextmenu.prevent>
         <div ref="canvasBoard" class="canvas-board" :class="{ 'has-nodes': nodes.length }" :style="{ zoom: `${zoom}%`, width: `${boardWidth}px`, height: `${boardHeight}px`, backgroundPosition: `${-boardBounds.left}px ${-boardBounds.top}px` }">
             <svg class="connections" :viewBox="`${boardBounds.left} ${boardBounds.top} ${boardWidth} ${boardHeight}`" preserveAspectRatio="none" aria-label="Material flow connections">
-              <g v-for="link in network.connectionRows" :key="link.key">
+              <g v-for="link in graphConnections" :key="link.key">
                 <path class="flow-shadow" :d="linkPath(link)" />
                 <path class="flow-line" :d="linkPath(link)" />
-                <circle class="flow-dot" :cx="portPosition(`output:${link.from.id}`, { x: link.from.x + 300, y: link.from.y + 128 }).x" :cy="portPosition(`output:${link.from.id}`, { x: link.from.x + 300, y: link.from.y + 128 }).y" r="4" />
+                <circle class="flow-dot" :cx="linkStart(link).x" :cy="linkStart(link).y" r="4" />
               </g>
             </svg>
-            <article v-for="node in nodes" :key="node.id" :ref="element => setNodeElement(node.id, element)" class="machine-card" :class="{ selected: selectedNodeIds.includes(node.id) }" :style="{ left: `${node.x - boardBounds.left}px`, top: `${node.y - boardBounds.top}px` }" @pointerdown.stop="startNodeMove($event, node)" @pointermove="moveNode" @pointerup="finishNodeMove" @pointercancel="finishNodeMove">
+            <article v-if="graphPanels.input" class="flow-panel input-panel" :style="{ left: `${graphPanels.input.x - boardBounds.left}px`, top: `${graphPanels.input.y - boardBounds.top}px` }">
+              <header><span class="flow-panel-mark">↓</span><strong>INPUT</strong></header>
+              <div v-for="item in graphPanels.input.rows" :key="item.itemId" class="flow-panel-row input-layer">
+                <span class="flow-panel-name">{{ item.name }}</span><small>{{ amount(item.rate) }} / min</small><strong>{{ itemPrice(item.name, 'buy') }}</strong><span class="port flow-panel-port right-port" />
+              </div>
+            </article>
+            <article v-if="graphPanels.output" class="flow-panel output-panel" :style="{ left: `${graphPanels.output.x - boardBounds.left}px`, top: `${graphPanels.output.y - boardBounds.top}px` }">
+              <header><span class="flow-panel-mark">↑</span><strong>OUTPUT</strong></header>
+              <div v-for="item in graphPanels.output.rows" :key="item.itemId" class="flow-panel-row output-layer">
+                <span class="port flow-panel-port left-port" /><span class="flow-panel-name">{{ item.name }}</span><small>{{ amount(item.rate) }} / min</small><strong>{{ itemPrice(item.name, 'sell') }}</strong>
+              </div>
+            </article>
+            <article v-for="node in nodes" :key="node.id" :ref="element => setNodeElement(node.id, element)" class="machine-card" :class="{ selected: selectedNodeIds.includes(node.id), compact: compactGraph }" :style="{ left: `${node.x - boardBounds.left}px`, top: `${node.y - boardBounds.top}px` }" @pointerdown.stop="startNodeMove($event, node)" @pointermove="moveNode" @pointerup="finishNodeMove" @pointercancel="finishNodeMove">
               <header class="machine-head">
                 <span class="grip" aria-hidden="true">⠿</span><span class="station-tag">{{ recipeFor(node)?.station.replaceAll('_', ' ') }}</span>
                 <button class="delete-node" :aria-label="`Remove ${recipeFor(node)?.product}`" title="Remove machine" @click="removeNode(node.id)">×</button>
               </header>
-              <div class="machine-body">
+              <div v-if="compactGraph" class="compact-body">
+                <div v-for="ingredient in recipeFor(node)?.ingredients" :key="ingredient.item_id" class="compact-input">
+                  <span class="port input-port" :class="{ connected: connections[inputKey(node.id, ingredient.item_id)] }" :ref="element => setPortElement(`input:${inputKey(node.id, ingredient.item_id)}`, element)" />
+                  <span>{{ ingredient.name }} ({{ itemPrice(ingredient.name, 'buy') }})</span>
+                </div>
+                <div class="compact-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><strong>{{ recipeFor(node)?.product }} ({{ itemPrice(recipeFor(node)?.product ?? '', 'sell') }})</strong><span class="compact-output-meta"><small :class="{ 'profit-positive': (processProfit(recipeFor(node), node.machines) ?? 0) > 0, 'profit-negative': (processProfit(recipeFor(node), node.machines) ?? 0) < 0 }">{{ profitLabel(processProfit(recipeFor(node), node.machines)) }}</small><small class="compact-output-rate">{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} / min</small></span></div>
+              </div>
+              <div v-else class="machine-body">
                 <p class="node-label">PRODUCTION MACHINE</p>
                 <h2>{{ recipeFor(node)?.product }}</h2>
                 <div class="machine-control"><span>Machines</span><div class="stepper"><button :aria-label="`Remove one ${recipeFor(node)?.product} machine`" @click="setMachineCount(node, node.machines - 1)">−</button><input :aria-label="`${recipeFor(node)?.product} machine count`" type="number" min="1" max="999" :value="node.machines" @change="setMachineCount(node, ($event.target as HTMLInputElement).value)"><button :aria-label="`Add one ${recipeFor(node)?.product} machine`" @click="setMachineCount(node, node.machines + 1)">+</button></div></div>
                 <button v-if="canExpandChain(node)" class="expand-chain" :title="`Create producer machines for ${recipeFor(node)?.product} inputs`" @pointerdown.stop @click="expandChain(node)"><span aria-hidden="true">↳</span> Expand ingredient chain</button>
-                <div class="node-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><span class="port-copy"><small>OUTPUT</small><strong>{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} <em>/ min</em></strong></span><span class="output-name">{{ recipeFor(node)?.product }}</span></div>
+                <div class="node-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><span class="port-copy"><small>OUTPUT</small><strong>{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} <em>/ min</em></strong></span><span class="output-copy"><strong class="output-name">{{ recipeFor(node)?.product }} ({{ itemPrice(recipeFor(node)?.product ?? '', 'sell') }})</strong><small class="node-profit" :class="{ 'profit-positive': (processProfit(recipeFor(node), node.machines) ?? 0) > 0, 'profit-negative': (processProfit(recipeFor(node), node.machines) ?? 0) < 0 }">{{ profitLabel(processProfit(recipeFor(node), node.machines)) }}</small></span></div>
                 <div class="input-heading"><span>INPUTS</span><span>/ MIN</span></div>
                 <div v-for="ingredient in recipeFor(node)?.ingredients" :key="ingredient.item_id" class="node-input">
                   <span class="port input-port" :class="{ connected: connections[inputKey(node.id, ingredient.item_id)] }" :ref="element => setPortElement(`input:${inputKey(node.id, ingredient.item_id)}`, element)" />
-                  <span class="input-name">{{ ingredient.name }}</span>
+                  <span class="input-name">{{ ingredient.name }} ({{ itemPrice(ingredient.name, 'buy') }})</span>
                   <strong>{{ amount(ingredient.quantity * (recipeFor(node)?.rate ?? 0) / (recipeFor(node)?.batch ?? 1) * node.machines) }}</strong>
                   <button v-if="providersFor(node, ingredient.item_id).length" class="connect-button" :class="{ linked: connections[inputKey(node.id, ingredient.item_id)] }" :title="connections[inputKey(node.id, ingredient.item_id)] ? 'Change material source' : 'Connect a producer'" @click="activeInput = activeInput === inputKey(node.id, ingredient.item_id) ? '' : inputKey(node.id, ingredient.item_id)">{{ connections[inputKey(node.id, ingredient.item_id)] ? '↔' : '○' }}</button>
                   <select v-if="activeInput === inputKey(node.id, ingredient.item_id)" class="provider-select" :value="connections[inputKey(node.id, ingredient.item_id)] ?? ''" :aria-label="`Choose source for ${ingredient.name}`" @change="setConnection(inputKey(node.id, ingredient.item_id), ($event.target as HTMLSelectElement).value)"><option value="">External supply</option><option v-for="provider in providersFor(node, ingredient.item_id)" :key="provider.id" :value="provider.id">{{ recipeFor(provider)?.product }} · {{ provider.machines }} machine{{ provider.machines === 1 ? '' : 's' }}</option></select>
@@ -1142,13 +1451,36 @@ function linkPath(link: Connection) {
             </div>
           </section>
           <div v-else-if="activeView === 'prices'" class="prices-page">
-            <div class="table-intro"><div><p class="eyebrow">LIVE MARKET</p><h2>Market prices</h2></div><span v-if="marketData">Updated {{ new Date(marketData.asOf).toLocaleString() }}</span><span v-else>Current public quotes</span></div>
-            <p class="prices-note">These are live quotes published on Capital Rift’s public market ticker. The feed lists current top movers; items absent from the feed do not have a displayed price. <a href="https://capitalrift.com/" target="_blank" rel="noreferrer">Source ↗</a></p>
-            <div class="prices-controls"><label class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" placeholder="Search market quotes"></label><button class="button" :disabled="marketLoading" @click="loadMarketPrices(true)">{{ marketLoading ? 'Refreshing…' : 'Refresh prices' }}</button></div>
+            <div class="table-intro"><div><p class="eyebrow">LIVE MARKET</p><h2>Market prices</h2></div><span v-if="marketData" class="market-freshness">Quotes as of {{ new Date(marketData.asOf).toLocaleString() }}<small v-if="nextMarketCheck">Next eligible update {{ nextMarketCheck }}</small><small v-if="marketData.refreshOutcome === 'failed'" class="market-refresh-failed">Daily refresh failed; showing saved quotes.</small></span><span v-else>Current public quotes</span></div>
+            <p class="prices-note">Quotes are served from the local database. The signed-in game ticker provides all {{ marketData?.catalogueCoverage?.total ?? metadata?.itemCount ?? '?' }} catalogue item prices; refresh it from the logged-in game at most once every 24 hours using the project sync bookmarklet. The trend shows up to 30 days of saved snapshots. Buy and sell assumptions stay local to your browser. Trading volume is not included in the game item ticker. <a href="https://play.capitalrift.com/" target="_blank" rel="noreferrer">Source ↗</a></p>
+            <section class="economics-section">
+              <div class="economics-heading"><div><p class="eyebrow">CURRENT PLAN</p><h3>Profit and production value</h3></div><span>{{ planEconomics.sales.pricedCount + planEconomics.costs.pricedCount }} priced · {{ planEconomics.sales.unpricedCount + planEconomics.costs.unpricedCount }} unpriced flows</span></div>
+              <div class="economics-cards">
+                <article class="economics-card"><span>EST. SALES · SURPLUS</span><strong>{{ planEconomics.sales.unpricedCount ? '$' + planEconomics.sales.knownTotal.toFixed(2) + ' + ?' : '$' + planEconomics.sales.knownTotal.toFixed(2) }}</strong><small>per minute · {{ planEconomics.sales.pricedCount }}/{{ planEconomics.sales.rows.length }} outputs priced</small></article>
+                <article class="economics-card"><span>EST. INPUT COST</span><strong>{{ planEconomics.costs.unpricedCount ? '$' + planEconomics.costs.knownTotal.toFixed(2) + ' + ?' : '$' + planEconomics.costs.knownTotal.toFixed(2) }}</strong><small>per minute · {{ planEconomics.costs.pricedCount }}/{{ planEconomics.costs.rows.length }} inputs priced</small></article>
+                <article class="economics-card net-card"><span>EST. NET PROFIT</span><strong :class="{ 'profit-positive': planEconomics.complete && planEconomics.netKnown > 0, 'profit-negative': planEconomics.complete && planEconomics.netKnown < 0 }">{{ planEconomics.complete ? profitLabel(planEconomics.netKnown) : '$... / min' }}</strong><small>{{ planEconomics.complete ? 'surplus sales minus external input costs' : 'requires prices for every external flow' }}</small></article>
+              </div>
+              <div class="economics-columns">
+                <div class="economics-list"><h4>Surplus available to sell</h4><div v-for="item in planEconomics.sales.rows" :key="`sale-${item.id}`" class="economics-row"><span>{{ item.name }}<small class="economics-rate">{{ amount(item.amount) }}/min × {{ item.price === undefined ? '$...' : '$' + item.price.toFixed(2) }} sell price</small><small v-if="item.quote" class="liquidity-note" :class="volumeShareClass(volumeSharePercent(item.amount, item.quote.units24h))">≈{{ volumeSharePercent(item.amount, item.quote.units24h)?.toFixed(1) }}% of reported 24h volume</small></span><strong>{{ item.valuePerMinute === undefined ? '$...' : '$' + item.valuePerMinute.toFixed(2) }}/min</strong></div><p v-if="!planEconomics.sales.rows.length" class="economics-empty">No unconnected product surplus to sell.</p></div>
+                <div class="economics-list"><h4>External materials to buy</h4><div v-for="item in planEconomics.costs.rows" :key="`cost-${item.id}`" class="economics-row"><span>{{ item.name }}<small class="economics-rate">{{ amount(item.amount) }}/min × {{ item.price === undefined ? '$...' : '$' + item.price.toFixed(2) }} buy price</small><small v-if="item.quote" class="liquidity-note" :class="volumeShareClass(volumeSharePercent(item.amount, item.quote.units24h))">≈{{ volumeSharePercent(item.amount, item.quote.units24h)?.toFixed(1) }}% of reported 24h volume</small></span><strong>{{ item.valuePerMinute === undefined ? '$...' : '$' + item.valuePerMinute.toFixed(2) }}/min</strong></div><p v-if="!planEconomics.costs.rows.length" class="economics-empty">No external input costs in this plan.</p></div>
+              </div>
+              <p class="economics-disclaimer">Volume share compares this plan’s estimated 24-hour rate with the feed’s 24-hour traded units; it is a scale indicator, not a fill guarantee. Estimates exclude machine/building costs, fees, and price impact.</p>
+            </section>
+            <section class="price-optimizer">
+              <div class="economics-heading"><div><p class="eyebrow">RECIPE OPTIMIZER</p><h3>Most profitable production routes</h3></div><span>{{ optimizerOpportunities.length }} fully priced recipes</span></div>
+              <p class="prices-note">Ranks every recipe whose output and complete ingredient route can be priced. Ingredient costs use the cheapest known buy-or-craft route; profit per minute assumes one machine running continuously. Your local buy/sell assumptions above are applied immediately. Volume share compares that machine’s daily output with recent traded units.</p>
+              <label class="view-search optimizer-search"><span>⌕</span><input v-model="optimizerSearch" type="search" placeholder="Search products, recipes, or buildings"></label>
+              <div class="table-scroll optimizer-table-scroll"><table class="planner-table optimizer-table"><thead><tr><th>Product / inputs</th><th>Recipe · building</th><th>Sell / item</th><th>Input cost / item</th><th>Margin / item</th><th>Margin</th><th>Profit / min</th><th>Est. share of daily volume</th><th>Action</th></tr></thead><tbody>
+                <tr v-for="opportunity in filteredOptimizerOpportunities" :key="opportunity.recipe.id" :class="{ 'loss-row': opportunity.marginPerItem < 0 }"><td><strong class="optimizer-product">{{ opportunity.recipe.product }}</strong><details class="optimizer-details"><summary>{{ opportunity.inputCosts.length }} input{{ opportunity.inputCosts.length === 1 ? '' : 's' }} · show cost breakdown</summary><div v-for="input in opportunity.inputCosts" :key="input.name" class="optimizer-input-detail"><span>{{ input.name }} · {{ amount(input.amountPerItem) }}/item<span v-if="input.routeRecipe"> via {{ input.routeRecipe.label }}</span></span><b>{{ '$' + input.unitCost.toFixed(2) }}/unit · {{ '$' + input.totalCost.toFixed(2) }}</b></div></details></td><td>{{ opportunity.recipe.label }}<small class="optimizer-building">{{ opportunity.recipe.station.replaceAll('_', ' ') }}</small></td><td>{{ '$' + opportunity.outputPrice.toFixed(2) }}</td><td>{{ '$' + opportunity.inputCostPerItem.toFixed(2) }}</td><td :class="opportunity.marginPerItem >= 0 ? 'profit-positive' : 'profit-negative'">{{ (opportunity.marginPerItem < 0 ? '−$' : '+$') + Math.abs(opportunity.marginPerItem).toFixed(2) }}</td><td>{{ opportunity.marginPercent.toFixed(1) }}%</td><td :class="opportunity.profitPerMinute >= 0 ? 'profit-positive' : 'profit-negative'">{{ profitLabel(opportunity.profitPerMinute) }}</td><td :class="volumeShareClass(opportunity.outputVolumeShare)">{{ opportunity.outputVolumeShare === undefined ? '$...' : `≈${opportunity.outputVolumeShare.toFixed(1)}%` }}</td><td><button class="optimizer-build" @click="buildOptimizedChain(opportunity)">Add chain</button></td></tr>
+                <tr v-if="!filteredOptimizerOpportunities.length"><td colspan="9" class="table-empty">{{ optimizerOpportunities.length ? 'No priced recipes match this search.' : 'No recipe has a fully priced output and ingredient route yet. More market coverage is needed.' }}</td></tr>
+              </tbody></table></div>
+              <p class="optimizer-footnote">The optimizer compares item prices only. It does not account for machine investment, throughput limits, market liquidity, taxes, recipe unlocks, or competing demand. Routes are theoretical until those rules and full item prices are available.</p>
+            </section>
+            <div class="prices-controls"><label class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" placeholder="Search market quotes"></label><button class="button" :disabled="marketLoading" @click="loadMarketPrices(true)">{{ marketLoading ? 'Loading…' : 'Check for due update' }}</button></div>
             <p v-if="marketLoading && !marketData" class="table-empty prices-status">Loading live quotes…</p><p v-else-if="marketError" class="table-empty prices-status" role="alert">{{ marketError }}</p>
-            <div v-else class="table-scroll"><table class="planner-table"><thead><tr><th>Item</th><th>Ticker</th><th>Market price</th><th>Units traded · 24h</th></tr></thead><tbody>
-              <tr v-for="quote in filteredMarketQuotes" :key="quote.symbol"><th scope="row"><span class="table-item-icon">{{ quote.name.slice(0, 1) }}</span>{{ quote.name }}</th><td>{{ quote.symbol }}</td><td>{{ '$' + quote.price.toFixed(2) }}</td><td>{{ amount(quote.units24h) }}</td></tr>
-              <tr v-if="!filteredMarketQuotes.length"><td colspan="4" class="table-empty">{{ marketData?.quotes.length ? 'No market quotes match this search.' : 'No live market quotes are available.' }}</td></tr>
+            <div v-else class="table-scroll market-table-scroll"><table class="planner-table market-table"><thead><tr><th>Item</th><th>Ticker</th><th>Market price</th><th>Your buy</th><th>Your sell</th><th>Units traded · 24h</th><th>30-day trend</th><th>Change since prior daily snapshot</th><th></th></tr></thead><tbody>
+              <tr v-for="quote in filteredMarketQuotes" :key="quote.symbol"><th scope="row"><span class="table-item-icon">{{ quote.name.slice(0, 1) }}</span>{{ quote.name }}</th><td>{{ quote.symbol }}</td><td>{{ '$' + quote.price.toFixed(2) }}</td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario buy price for ${quote.name}`" :placeholder="quote.price.toFixed(2)" :value="priceOverrides[quote.symbol]?.buy ?? ''" @change="setPriceOverride(quote.symbol, 'buy', ($event.target as HTMLInputElement).value)"></td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario sell price for ${quote.name}`" :placeholder="quote.price.toFixed(2)" :value="priceOverrides[quote.symbol]?.sell ?? ''" @change="setPriceOverride(quote.symbol, 'sell', ($event.target as HTMLInputElement).value)"></td><td>{{ quote.volumeKnown === false ? '—' : amount(quote.units24h) }}</td><td><svg v-if="quote.history.length > 1" class="price-sparkline" viewBox="0 0 100 24" role="img" :aria-label="`${quote.history.length} daily prices; ${quote.history[0]} to ${quote.price}`"><polyline :points="sparklinePoints(quote.history)" /></svg><small v-else class="history-pending">Collecting</small></td><td :class="quote.changeSincePreviousPercent === null ? '' : quote.changeSincePreviousPercent >= 0 ? 'profit-positive' : 'profit-negative'">{{ quote.changeSincePreviousPercent === null ? 'Collecting daily snapshots' : `${quote.changeSincePreviousPercent >= 0 ? '+' : ''}${quote.changeSincePreviousPercent.toFixed(2)}%` }}</td><td><button v-if="priceOverrides[quote.symbol]" class="price-reset" @click="resetPriceOverrides(quote.symbol)">Reset</button></td></tr>
+              <tr v-if="!filteredMarketQuotes.length"><td colspan="9" class="table-empty">{{ marketData?.quotes.length ? 'No market quotes match this search.' : marketData?.refreshOutcome === 'failed' ? 'The daily market update failed and no saved quotes are available yet.' : 'No market quotes are available.' }}</td></tr>
             </tbody></table></div>
           </div>
           <label v-else-if="activeView === 'items' || activeView === 'buildings'" class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" :placeholder="activeView === 'items' ? 'Search planned items' : 'Search buildings or products'"></label>
@@ -1182,6 +1514,7 @@ function linkPath(link: Connection) {
       <aside class="inspector">
         <div class="inspector-top"><div><p class="eyebrow">PLAN OVERVIEW</p><h2>Network stats</h2></div></div>
         <div class="stat-grid"><div class="stat-card"><span>MACHINES</span><strong>{{ network.machineTotal }}</strong><small>across {{ nodes.length }} recipes</small></div><div class="stat-card"><span>CONNECTIONS</span><strong>{{ network.connectionRows.length }}</strong><small>material flows</small></div></div>
+        <section class="total-profit-card"><span>TOTAL PROFIT · PER MIN</span><strong :class="{ 'profit-positive': (totalProfitPerMinute ?? 0) > 0, 'profit-negative': (totalProfitPerMinute ?? 0) < 0 }">{{ profitLabel(totalProfitPerMinute) }}</strong><small>Surplus sales minus external input costs</small></section>
         <section class="summary-section"><div class="section-heading"><div><span class="section-mark import-mark">↓</span><h3>External inputs</h3></div><span class="section-count">{{ network.external.length }}</span></div>
           <div v-if="network.external.length" class="resource-list"><div v-for="item in network.external" :key="item.id" class="resource-row"><span class="resource-icon">{{ item.name.slice(0, 1) }}</span><span class="resource-name">{{ item.name }}</span><strong>{{ amount(item.amount) }} <small>/ min</small></strong></div></div>
           <p v-else class="summary-empty">Add machines to see required materials.</p>
@@ -1209,4 +1542,11 @@ function linkPath(link: Connection) {
 .target-entry-row{display:grid;grid-template-columns:minmax(0,1fr) 190px 30px;align-items:end;gap:14px}.target-search-control{display:flex;align-items:center;gap:11px;min-width:0}.target-search-control>.item-icon{width:36px;height:36px}.target-search-input{height:36px;min-width:0;flex:1;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid #313c34;border-radius:5px;background:#111713;transition:border-color .15s,box-shadow .15s}.target-search-input:focus-within{border-color:#668469;box-shadow:0 0 0 2px #80b58722}.target-search-input>.search-icon{flex:none;color:#89958b;font-size:19px;line-height:1}.target-search-input input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#dbe2db;font:11px 'DM Sans',sans-serif}.target-search-input input::placeholder{color:#68756b}.target-amount{display:flex;flex-direction:column;gap:5px}.target-amount>label{color:#849187;font:8px 'DM Mono',monospace;letter-spacing:.06em;text-transform:uppercase}.target-rate-control{height:36px;display:flex;align-items:center;gap:7px;padding:0 9px;border:1px solid #313c34;border-radius:5px;background:#111713;transition:border-color .15s,box-shadow .15s}.target-rate-control:focus-within{border-color:#668469;box-shadow:0 0 0 2px #80b58722}.target-rate-control input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#e1e9e2;text-align:right;font:11px 'DM Mono',monospace;appearance:textfield}.target-rate-control input::-webkit-inner-spin-button,.target-rate-control input::-webkit-outer-spin-button{margin:0;appearance:none}.target-rate-control>span{flex:none;color:#778579;font:8px 'DM Mono',monospace;white-space:nowrap}.target-entry-row>.remove-target{height:36px}.target-rate .target-rate-control{margin-left:auto}.target-rate .target-rate-control input{width:84px}.target-rate-control input:focus-visible,.target-search-input input:focus-visible{outline:none}@media(max-width:700px){.target-entry-row{grid-template-columns:minmax(0,1fr) 32px;gap:10px}.target-search-control{grid-column:1/-1}.target-amount{grid-column:1}.target-entry-row>.remove-target{grid-column:2;grid-row:2;align-self:end}.target-rate{margin-left:0}.target-section{padding:14px}.target-section-heading{align-items:flex-start}.target-add-button{height:35px;padding-right:8px}.target-add-button>span:last-child{font-size:9px}}
 .prices-placeholder{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center}.prices-mark{width:54px;height:54px;display:grid;place-items:center;margin-bottom:18px;border:1px solid #405443;border-radius:12px;background:#1d2920;color:#acd0ae;font:26px 'DM Mono',monospace}.prices-placeholder .eyebrow{margin-bottom:7px}.prices-placeholder h2{margin:0 0 8px;color:#dfe7df;font-size:17px;font-weight:500}.prices-placeholder>p:last-child{max-width:340px;margin:0;color:#87948a;font-size:11px;line-height:1.6}
 .prices-page{min-height:100%;padding:20px 22px}.prices-page .table-intro{margin-bottom:8px}.prices-note{max-width:740px;margin:0 0 15px;color:#849187;font-size:10px;line-height:1.6}.prices-note a{margin-left:4px;color:#9fc6a2;text-decoration:none}.prices-note a:hover{text-decoration:underline}.prices-controls{display:flex;align-items:center;gap:10px;margin-bottom:14px}.prices-controls .view-search{flex:1;margin:0}.prices-status{padding:28px!important;text-align:center!important}.prices-page .planner-table td:nth-child(2){color:#98ad9b;text-align:left;font-family:'DM Mono',monospace}.prices-page .planner-table td:nth-child(3),.prices-page .planner-table td:nth-child(4){font-family:'DM Mono',monospace}.prices-page .planner-table tbody tr th[scope=row]{text-align:left}@media(max-width:700px){.prices-page{padding:15px 12px}.prices-controls{align-items:stretch}.prices-controls .button{padding:6px 8px;font-size:9px}.prices-page .planner-table th,.prices-page .planner-table td{padding:7px 6px}}
+.density-control{display:flex;align-items:center;gap:6px;color:#8b988d;font:8px 'DM Mono',monospace;white-space:nowrap}.density-control input{width:38px;height:16px;margin:0;accent-color:#80b587;cursor:pointer}.source-card{position:absolute;width:220px;min-height:86px;padding:9px 11px;z-index:1;border:1px solid #806b48;border-radius:6px;background:#25231c;box-shadow:0 6px 20px #0004;color:#ded6c2}.source-card>header{display:flex;align-items:center;gap:6px;margin-bottom:9px;color:#c4a970;font:8px 'DM Mono',monospace;letter-spacing:.09em}.source-mark{display:grid;place-items:center;width:16px;height:16px;border:1px solid #806b48;border-radius:4px;font-size:11px}.source-port-row{position:relative;display:flex;align-items:center;gap:7px;min-height:24px}.source-item-name{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e6ddc8;font-size:11px;text-transform:capitalize}.source-port-row strong{color:#ddc17d;font:10px 'DM Mono',monospace}.source-card>small{display:block;margin-top:4px;color:#9a8d6c;font:7px 'DM Mono',monospace;letter-spacing:.08em}.source-card .output-port{right:-16px}.machine-card.compact{width:260px;min-height:0}.machine-card.compact .machine-head{height:27px}.machine-card.compact .machine-body{display:none}.compact-body{padding:7px 10px 9px}.compact-input{position:relative;min-height:22px;display:flex;align-items:center;padding:2px 0 2px 2px;border-bottom:1px solid #28312a;color:#b9c6ba;font-size:9px}.compact-input>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.compact-input .input-port{left:-15px;top:7px}.compact-output{position:relative;display:flex;align-items:center;min-height:25px;padding:4px 0 0;border-top:1px solid #39473a;color:#c9dfca;font-size:10px}.compact-output strong{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}.compact-output-rate{flex:none;margin-left:8px;color:#8eae91;font:8px 'DM Mono',monospace;text-align:right;white-space:nowrap}.compact-output .output-port{right:-15px;top:9px}.machine-card.compact .delete-node{font-size:15px}.machine-card.compact .station-tag{font-size:8px}@media(max-width:700px){.toolbar-actions{gap:8px}.density-control{gap:3px;font-size:7px}.density-control input{width:30px}}
+.flow-panel{position:absolute;width:250px;z-index:1;overflow:visible;border:1px solid #806b48;border-radius:6px;background:#25231c;box-shadow:0 6px 20px #0004;color:#e6ddc8}.flow-panel>header{height:31px;display:flex;align-items:center;gap:7px;padding:0 10px;border-bottom:1px solid #4b4029;color:#d2b770;font:9px 'DM Mono',monospace;letter-spacing:.1em}.flow-panel-mark{width:17px;height:17px;display:grid;place-items:center;border:1px solid #806b48;border-radius:4px;font:12px 'DM Mono',monospace}.flow-panel-row{position:relative;height:29px;display:grid;grid-template-columns:minmax(0,1fr) 54px 42px;align-items:center;gap:5px;padding:0 9px;border-bottom:1px solid #403a2c}.flow-panel-row:last-child{border-bottom:0}.flow-panel-name{overflow:hidden;color:#ded6c2;text-overflow:ellipsis;white-space:nowrap;font-size:9px}.flow-panel-row>small{color:#a99a72;text-align:right;font:8px 'DM Mono',monospace;white-space:nowrap}.flow-panel-row>strong{color:#ddc17d;text-align:right;font:9px 'DM Mono',monospace;white-space:nowrap}.flow-panel-port.right-port{right:-15px;top:10px;border-color:#dfc783}.flow-panel-port.left-port{left:-15px;top:10px;border-color:#dfc783}.input-panel .flow-panel-mark{color:#e2c57b}.output-panel .flow-panel-mark{color:#9fcda1;border-color:#6a8d6b}.output-panel{border-color:#526e54}.output-panel>header{border-color:#344a35;color:#add2af}.output-panel .flow-panel-row>strong{color:#b7d8b8}
+.output-copy{min-width:0;flex:1;display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto}.output-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#93ae95;font-size:10px;font-weight:600;text-transform:capitalize}.node-profit{flex:none;color:#d2bd87;font:8px 'DM Mono',monospace;white-space:nowrap}.profit-positive{color:#9fd1a2!important}.profit-negative{color:#e2a092!important}.compact-output{gap:6px;min-height:36px}.compact-output strong{font-weight:600}.compact-output-meta{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px}.compact-output-meta small{font:7px 'DM Mono',monospace;white-space:nowrap}.compact-output .output-port{top:14px}.total-profit-card{display:flex;flex-direction:column;gap:7px;margin:-8px 0 19px;padding:12px;border:1px solid #3a503c;border-radius:5px;background:linear-gradient(135deg,#202c22,#1b241d)}.total-profit-card>span{color:#91a493;font:8px 'DM Mono',monospace;letter-spacing:.08em}.total-profit-card>strong{font:19px 'DM Mono',monospace;color:#dbe6dc}.total-profit-card>small{color:#849187;font-size:9px}.optimizer-section{padding-top:2px}.optimizer-mark{color:#a9d2ab;background:#253329}.optimizer-note,.optimizer-footnote{margin:0 0 8px;color:#879489;font-size:9px;line-height:1.5}.opportunity-list{display:flex;flex-direction:column;gap:7px}.opportunity-card{padding:8px;border:1px solid #303d32;border-radius:5px;background:#1b241d}.opportunity-top{display:flex;align-items:center;justify-content:space-between;gap:7px}.opportunity-top strong{min-width:0;overflow:hidden;color:#dce5dd;font-size:10px;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.opportunity-top b{flex:none;color:#9fd1a2;font:8px 'DM Mono',monospace;white-space:nowrap}.opportunity-card>small{display:block;overflow:hidden;margin-top:4px;color:#859286;font-size:8px;text-overflow:ellipsis;white-space:nowrap}.optimizer-build{margin-top:7px;padding:4px 7px;border:1px solid #405743;border-radius:4px;background:#233126;color:#b9dabb;font:8px 'DM Sans',sans-serif;cursor:pointer}.optimizer-build:hover{border-color:#739375;background:#2b3c2e}.optimizer-footnote{margin:8px 0 0;color:#69776c;font-size:8px}
+/* Market economics and recipe optimizer */
+.economics-section,.price-optimizer{margin:18px 0 24px;padding:16px;border:1px solid #2c382f;border-radius:7px;background:linear-gradient(145deg,#171f19,#141a16)}.economics-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:13px}.economics-heading .eyebrow{margin-bottom:4px}.economics-heading h3{margin:0;color:#dce6dd;font-size:14px;font-weight:600}.economics-heading>span{color:#829085;font:8px 'DM Mono',monospace;white-space:nowrap}.economics-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.economics-card{min-width:0;display:flex;flex-direction:column;gap:7px;padding:12px;border:1px solid #303b32;border-radius:5px;background:#1a231c}.economics-card>span{color:#8b9b8e;font:8px 'DM Mono',monospace;letter-spacing:.06em}.economics-card>strong{overflow:hidden;color:#d9e3da;font:17px 'DM Mono',monospace;text-overflow:ellipsis;white-space:nowrap}.economics-card>small{color:#7f8c81;font-size:9px;line-height:1.4}.economics-card.net-card{border-color:#405541;background:#1d2a20}.economics-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:15px}.economics-list{min-width:0}.economics-list h4{margin:0 0 7px;color:#a8b8aa;font-size:10px;font-weight:500}.economics-row{display:grid;grid-template-columns:minmax(75px,1fr) auto auto;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #273129;font-size:9px}.economics-row>span{overflow:hidden;color:#d0d9d1;text-overflow:ellipsis;white-space:nowrap}.economics-row>small{color:#849186;font:8px 'DM Mono',monospace;white-space:nowrap}.economics-row>strong{color:#b8c9ba;font:8px 'DM Mono',monospace;white-space:nowrap}.economics-empty{margin:8px 0;color:#758277;font-size:9px}.economics-disclaimer{margin:13px 0 0;color:#718074;font-size:8px;line-height:1.5}.price-optimizer{padding-bottom:12px}.price-optimizer>.prices-note{margin-top:-4px}.optimizer-search{max-width:440px;margin-bottom:10px}.optimizer-table-scroll{max-height:540px;overflow:auto}.optimizer-table{min-width:900px}.optimizer-table td{vertical-align:top}.optimizer-table th{position:sticky;top:0;z-index:1;background:#1b231d}.optimizer-table td:nth-child(n+3):nth-child(-n+7){font:9px 'DM Mono',monospace;white-space:nowrap}.optimizer-table .loss-row{background:#251c1b}.optimizer-product{color:#dce6dd;font-size:10px;font-weight:600}.optimizer-building{display:block;margin-top:4px;color:#859287;font-size:8px;text-transform:capitalize}.optimizer-details{margin-top:5px;color:#91a092;font-size:8px}.optimizer-details summary{cursor:pointer;white-space:nowrap}.optimizer-details summary:hover{color:#c2d4c3}.optimizer-input-detail{display:flex;justify-content:space-between;gap:14px;padding:5px 7px;border-top:1px solid #303a32;color:#9aa79c;font:8px 'DM Sans',sans-serif}.optimizer-input-detail b{flex:none;color:#b6c5b7;font:8px 'DM Mono',monospace}.optimizer-table .optimizer-build{margin:0;white-space:nowrap}.optimizer-footnote{margin:10px 0 0;color:#758277;font-size:8px;line-height:1.5}.prices-controls{margin-top:18px;padding-top:12px;border-top:1px solid #29332b}@media(max-width:700px){.economics-section,.price-optimizer{padding:12px}.economics-heading{align-items:flex-start;flex-direction:column}.economics-cards{grid-template-columns:1fr}.economics-columns{grid-template-columns:1fr}.economics-row{grid-template-columns:minmax(65px,1fr) auto auto;gap:6px}.economics-row>small,.economics-row>strong{font-size:7px}}
+.optimizer-table{min-width:1020px}.optimizer-table td{vertical-align:top}.optimizer-table td:nth-child(n+3):nth-child(-n+8){font:9px 'DM Mono',monospace;white-space:nowrap}.liquidity-high{color:#e2a092!important}.liquidity-watch{color:#e0c17e!important}.economics-rate,.liquidity-note{display:block;margin-top:3px;color:#849186;font:8px 'DM Mono',monospace}.market-table-scroll{overflow:auto}.market-table{min-width:1250px}.market-table td:nth-child(2),.market-table td:nth-child(3),.market-table td:nth-child(6),.market-table td:nth-child(8){font:9px 'DM Mono',monospace;white-space:nowrap}.price-sparkline{width:74px;height:20px;overflow:visible}.price-sparkline polyline{fill:none;stroke:#9fcda1;stroke-width:2;vector-effect:non-scaling-stroke}.history-pending{color:#728075;font:8px 'DM Mono',monospace}.price-override-input{width:90px;height:28px;border:1px solid #354139;border-radius:4px;background:#111713;color:#dbe2db;padding:0 6px;font:9px 'DM Mono',monospace}.price-override-input::placeholder{color:#617064}.price-reset{border:1px solid #435244;border-radius:4px;background:#202a22;color:#a8c8aa;padding:4px 7px;font:8px 'DM Sans',sans-serif;cursor:pointer}.price-reset:hover{border-color:#719174;color:#d2e6d2}
+.market-freshness{display:flex;flex-direction:column;gap:4px;text-align:right;color:#7d8b7f;font:8px 'DM Mono',monospace}.market-freshness small{font-size:7px}.market-refresh-failed{color:#e2a092}
 </style>

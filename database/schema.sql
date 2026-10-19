@@ -28,6 +28,44 @@ CREATE TABLE IF NOT EXISTS changelog_change_items (
   id INTEGER PRIMARY KEY, change_id INTEGER NOT NULL REFERENCES changelog_changes(id) ON DELETE CASCADE,
   description TEXT NOT NULL, sort_order INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS market_quotes (
+  symbol TEXT PRIMARY KEY, name TEXT NOT NULL, price REAL NOT NULL,
+  units24h REAL NOT NULL, quote_as_of TEXT NOT NULL, fetched_at TEXT NOT NULL,
+  source_url TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS market_refresh_log (
+  id INTEGER PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT,
+  endpoint TEXT NOT NULL, http_status INTEGER, quote_count INTEGER NOT NULL DEFAULT 0,
+  outcome TEXT NOT NULL, error_message TEXT
+);
+CREATE TABLE IF NOT EXISTS market_quote_history (
+  id INTEGER PRIMARY KEY, symbol TEXT NOT NULL, name TEXT NOT NULL,
+  price REAL NOT NULL, units24h REAL NOT NULL, quote_as_of TEXT NOT NULL,
+  fetched_at TEXT NOT NULL, source_url TEXT NOT NULL,
+  UNIQUE(symbol, quote_as_of)
+);
+CREATE TABLE IF NOT EXISTS market_item_quotes (
+  symbol TEXT PRIMARY KEY, name TEXT NOT NULL, price REAL NOT NULL,
+  day_change_percent REAL, quote_as_of TEXT NOT NULL, fetched_at TEXT NOT NULL,
+  source_url TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS market_item_quote_history (
+  id INTEGER PRIMARY KEY, symbol TEXT NOT NULL, price REAL NOT NULL,
+  quote_as_of TEXT NOT NULL, fetched_at TEXT NOT NULL,
+  UNIQUE(symbol, quote_as_of)
+);
+CREATE TABLE IF NOT EXISTS market_item_sync_log (
+  id INTEGER PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT,
+  endpoint TEXT NOT NULL, quote_count INTEGER NOT NULL DEFAULT 0,
+  outcome TEXT NOT NULL, error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_market_item_quote_history_symbol_date
+  ON market_item_quote_history(symbol, quote_as_of DESC);
+CREATE INDEX IF NOT EXISTS idx_market_quote_history_symbol_date
+  ON market_quote_history(symbol, quote_as_of DESC);
+INSERT OR IGNORE INTO market_quote_history
+  (symbol, name, price, units24h, quote_as_of, fetched_at, source_url)
+SELECT symbol, name, price, units24h, quote_as_of, fetched_at, source_url FROM market_quotes;
 CREATE INDEX IF NOT EXISTS idx_recipes_product ON recipes(product_item_id);
 CREATE INDEX IF NOT EXISTS idx_recipes_station ON recipes(station_id);
 CREATE INDEX IF NOT EXISTS idx_ingredients_item ON recipe_ingredients(item_id);
