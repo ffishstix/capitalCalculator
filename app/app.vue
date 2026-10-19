@@ -73,6 +73,7 @@ onMounted(async () => {
     ])
     recipes.value = catalog
     metadata.value = sourceInfo
+    consolidateOutputNodes()
     nodes.value = nodes.value.filter(node => catalog.some(recipe => recipe.id === node.recipeId))
     await nextTick()
     centerCanvas()
@@ -195,6 +196,12 @@ function wouldCreateCycle(consumerId: string, providerId: string) {
   return false
 }
 function addRecipe(recipe: Recipe, position?: { x: number; y: number }) {
+  const existing = nodes.value.find(node => recipeFor(node)?.product_id === recipe.product_id)
+  if (existing) {
+    selectedNodeIds.value = [existing.id]
+    void nextTick(centerCanvas)
+    return
+  }
   const index = nodes.value.length
   const node = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -462,8 +469,43 @@ function synchronizeUpstream(start: MachineNode) {
   for (const producer of postOrder.reverse()) {
     if (producer.id === start.id) continue
     const recipe = recipeFor(producer)
-    if (recipe?.rate) producer.machines = machinesForDemand(connectedDemand(producer.id), recipe.rate)
+    const demand = connectedDemand(producer.id)
+    if (recipe?.rate && demand > 0) producer.machines = machinesForDemand(demand, recipe.rate)
   }
+}
+function consolidateOutputNodes() {
+  const canonicalByProduct = new Map<string, MachineNode>()
+  const replacements = new Map<string, string>()
+  for (const node of nodes.value) {
+    const productId = recipeFor(node)?.product_id
+    if (!productId) continue
+    const canonical = canonicalByProduct.get(productId)
+    if (canonical) replacements.set(node.id, canonical.id)
+    else canonicalByProduct.set(productId, node)
+  }
+  if (!replacements.size) return
+
+  const remapped: Record<string, string> = {}
+  for (const [key, sourceId] of Object.entries(connections.value)) {
+    const separator = key.lastIndexOf(':')
+    const originalConsumerId = key.slice(0, separator)
+    const itemId = key.slice(separator + 1)
+    const consumerId = replacements.get(originalConsumerId) ?? originalConsumerId
+    const providerId = replacements.get(sourceId) ?? sourceId
+    if (consumerId === providerId) continue
+    const consumer = nodes.value.find(node => node.id === consumerId)
+    if (!consumer || !recipeFor(consumer)?.ingredients.some(ingredient => ingredient.item_id === itemId)) continue
+    const remappedKey = inputKey(consumerId, itemId)
+    if (!remapped[remappedKey] || originalConsumerId === consumerId) remapped[remappedKey] = providerId
+  }
+  connections.value = remapped
+  nodes.value = nodes.value.filter(node => !replacements.has(node.id))
+  for (const producer of nodes.value) {
+    const recipe = recipeFor(producer)
+    const demand = connectedDemand(producer.id)
+    if (recipe?.rate && demand > 0) producer.machines = machinesForDemand(demand, recipe.rate)
+  }
+  selectedNodeIds.value = selectedNodeIds.value.map(id => replacements.get(id) ?? id).filter((id, index, all) => all.indexOf(id) === index)
 }
 function expandChain(root: MachineNode, relayout = true) {
   function expand(parent: MachineNode, path = new Set<string>()) {
@@ -515,6 +557,7 @@ function expandChain(root: MachineNode, relayout = true) {
     })
   }
   expand(root)
+  consolidateOutputNodes()
   if (relayout) {
     arrangeNetwork()
     void nextTick(centerCanvas)
@@ -540,19 +583,25 @@ function buildProductionTargets() {
     connections.value = {}
     selectedNodeIds.value = []
   }
+  const targetsByProduct = new Map<string, { target: ProductionTarget; rate: number }>()
   for (const target of productionTargets.value) {
+    const current = targetsByProduct.get(target.itemId)
+    targetsByProduct.set(target.itemId, { target: current?.target ?? target, rate: (current?.rate ?? 0) + target.rate })
+  }
+  for (const { target, rate } of targetsByProduct.values()) {
     const recipe = recipes.value.find(candidate => candidate.id === target.recipeId && candidate.product_id === target.itemId)
       ?? recipesForItem(target.itemId)[0]
-    if (!recipe || target.rate <= 0) continue
+    if (!recipe || rate <= 0) continue
     let root = nodes.value.find(node => node.recipeId === recipe.id && !Object.values(connections.value).includes(node.id))
     if (!root) {
       const index = nodes.value.length
       root = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, recipeId: recipe.id, x: 48 + (index % 4) * 350, y: 48 + Math.floor(index / 4) * 600, machines: 1 }
       nodes.value.push(root)
     }
-    root.machines = machinesForDemand(target.rate, recipe.rate)
+    root.machines = machinesForDemand(rate, recipe.rate)
     expandChain(root, false)
   }
+  consolidateOutputNodes()
   if (autoArrangeGenerated.value) arrangeNetwork()
   activeView.value = 'network'
   void nextTick(centerCanvas)
