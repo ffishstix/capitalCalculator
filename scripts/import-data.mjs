@@ -32,7 +32,7 @@ db.pragma('foreign_keys = ON')
 db.exec(fs.readFileSync(path.join(root, 'database', 'schema.sql'), 'utf8'))
 const importAll = db.transaction(() => {
   db.exec(`DELETE FROM changelog_change_items; DELETE FROM changelog_changes; DELETE FROM changelog_entries;
-    DELETE FROM recipe_ingredients; DELETE FROM recipes; DELETE FROM items; DELETE FROM source_imports;`)
+    DELETE FROM recipe_ingredients; DELETE FROM recipes; DELETE FROM items;`)
   const result = db.prepare(`INSERT INTO source_imports
     (source_url, repository_url, source_revision, retrieved_at, dataset_sha256, item_count, recipe_count, changelog_count)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(sourceUrl, repositoryUrl, sourceRevision,
@@ -61,11 +61,22 @@ const importAll = db.transaction(() => {
 })
 try {
   importAll()
+  const archiveName = `${(sourceRevision ?? 'unversioned').replace(/[^a-zA-Z0-9._-]/g, '_')}-${digest.slice(0, 12)}`
+  const archiveDir = path.join(root, 'data', 'archive', archiveName)
+  fs.mkdirSync(archiveDir, { recursive: true })
+  for (const file of [catalogPath, changelogPath, revisionPath]) {
+    if (fs.existsSync(file)) fs.copyFileSync(file, path.join(archiveDir, path.basename(file)))
+  }
+  fs.writeFileSync(path.join(archiveDir, 'manifest.json'), JSON.stringify({
+    sourceRevision, retrievedAt, sourceUrl, repositoryUrl, datasetSha256: digest,
+    itemCount: items.length, recipeCount: recipes.length, changelogCount: changelog.entries.length
+  }, null, 2) + '\n')
   console.log(JSON.stringify({
     items: db.prepare('SELECT COUNT(*) AS n FROM items').get().n,
     recipes: db.prepare('SELECT COUNT(*) AS n FROM recipes').get().n,
     recipeIngredients: db.prepare('SELECT COUNT(*) AS n FROM recipe_ingredients').get().n,
     changelogEntries: db.prepare('SELECT COUNT(*) AS n FROM changelog_entries').get().n,
+    archivedSnapshot: archiveDir,
     import: db.prepare('SELECT retrieved_at, dataset_sha256 FROM source_imports ORDER BY id DESC LIMIT 1').get()
   }, null, 2))
 } finally { db.close() }

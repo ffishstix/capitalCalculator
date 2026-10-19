@@ -1,0 +1,3496 @@
+{
+  "items": {
+    "air_conditioner": "Air Conditioner",
+    "anchor_chain": "Anchor Chain",
+    "aquarium": "Aquarium",
+    "armchair": "Armchair",
+    "atm": "Cash Machine",
+    "avocado": "Avocado",
+    "avocado_sapling": "Avocado Sapling",
+    "back_bar_shelf": "Back Bar Shelf",
+    "balaclava": "Wool Balaclava",
+    "banana": "Banana",
+    "banana_sapling": "Banana Sapling",
+    "bar_counter": "Bar Counter",
+    "bar_stool": "Bar Stool",
+    "barrel": "Barrel",
+    "batter": "Crepe Batter",
+    "battery": "Battery Pack",
+    "battery_paste": "Battery Paste",
+    "bean_seeds": "Bean Seeds",
+    "beanie": "Wool Beanie",
+    "beans": "Beans",
+    "bed": "Bed",
+    "beef": "Beef",
+    "bistro_chair": "Bistro Chair",
+    "blackjack_table": "Blackjack Table",
+    "bobble_hat": "Bobble Hat",
+    "bookshelf": "Bookshelf",
+    "booth_bench": "Booth Bench",
+    "brass_trim": "Brass Trim",
+    "brick": "Brick",
+    "brick_kiln": "Brick Kiln",
+    "bucket_wheel_excavator": "Bucket-Wheel Excavator",
+    "buns": "Buns",
+    "burger_bun": "Burger Bun",
+    "burger_bundle": "Burger Cart Bundle",
+    "burrito_bundle": "Burrito Cart Bundle",
+    "cabinet": "Storage Cabinet",
+    "cafe_table": "Cafe Table",
+    "cafe_table_square": "Square Cafe Table",
+    "candle": "Candle",
+    "cardigan": "Knit Cardigan",
+    "carpentry_bench": "Carpentry Bench",
+    "carpet": "Carpet",
+    "cashier_cage": "Cashier Cage",
+    "casino_chips": "Casino Chips",
+    "chair": "Chair",
+    "champagne_stand": "Champagne Stand",
+    "chandelier": "Crystal Chandelier",
+    "cheese": "Cheese",
+    "chemical_plant": "Chemical Plant",
+    "chicken": "Chicken",
+    "chicken_meat": "Chicken Meat",
+    "chip_blank": "Chip Blank",
+    "chip_fab": "Chip Fab",
+    "circuit_board": "Circuit Board",
+    "clothing_rack": "Clothing Rack",
+    "coal": "Coal",
+    "coal_bunker": "Coal Bunker",
+    "coal_generator": "Coal-fired Generator Set",
+    "coat_check_counter": "Coat Check Counter",
+    "cocktail_cart": "Cocktail Cart",
+    "cocktail_table": "Cocktail Table",
+    "computer": "Computer",
+    "computer_case": "Computer Case",
+    "concrete": "Concrete",
+    "copper_bar": "Copper Bar",
+    "copper_ore": "Copper Ore",
+    "copper_wire": "Copper Wire",
+    "corn": "Corn",
+    "corn_seeds": "Corn Seed",
+    "cow": "Cow",
+    "cpu": "CPU",
+    "crate": "Storage Crate",
+    "crepe_bundle": "Crepe Cart Bundle",
+    "crude_oil": "Crude Oil",
+    "cucumber": "Cucumber",
+    "cucumber_seeds": "Cucumber Seeds",
+    "curtain_panel": "Curtain Panel",
+    "cutting_board": "Cutting Board",
+    "delivery_space": "Delivery Space",
+    "desk": "Desk",
+    "diesel": "Diesel",
+    "diner_chair": "Diner Chair",
+    "display_platform": "Display Platform",
+    "dj_booth": "DJ Booth",
+    "door_double": "Double Door",
+    "door_glass": "Glass Door",
+    "door_single": "Single Door",
+    "dough": "Pizza Dough",
+    "dresser": "Dresser",
+    "drill_head": "Drill Head",
+    "drill_rig": "Drill Rig",
+    "echo_sounder": "Echo Sounder",
+    "electronic_roulette": "Electronic Roulette",
+    "electronics_bench": "Electronics Bench",
+    "elevator": "Elevator",
+    "engine": "Engine",
+    "engine_block": "Engine Block",
+    "fabric": "Fabric",
+    "fan_heater": "Fan Heater",
+    "felt": "Felt",
+    "filing_cabinet": "Filing Cabinet",
+    "fish": "Cod Fillet",
+    "fishchips_bundle": "Fish & Chips Cart Bundle",
+    "flax": "Flax",
+    "flax_seeds": "Flax Seeds",
+    "floor_sign": "A-Frame Sign",
+    "food_cart": "Food Cart",
+    "foundry": "Foundry",
+    "fountain": "Fountain",
+    "franks": "Franks",
+    "fryer_oil": "Fryer Oil",
+    "fuel_tank": "Fuel Tank",
+    "furnace": "Furnace",
+    "gaming_table_frame": "Gaming Table Frame",
+    "gaming_workshop": "Gaming Workshop",
+    "garage_roller": "Garage Door",
+    "gear": "Gear",
+    "giant_dice": "Giant Dice",
+    "glass": "Glass",
+    "glass_counter": "Glass Counter",
+    "glazing_line": "Glazing Line",
+    "gold_bar": "Gold Bar",
+    "gold_leaf": "Gold Leaf",
+    "gold_ore": "Gold Ore",
+    "gold_statue": "Gold Statue",
+    "grain_silo": "Grain Silo",
+    "guac": "Guacamole",
+    "hardwood": "Hardwood",
+    "haul_truck": "Haul Truck",
+    "hazelnut": "Hazelnuts",
+    "hazelnut_sapling": "Hazelnut Sapling",
+    "hide": "Hide",
+    "hotdog_bundle": "Hot Dog Cart Bundle",
+    "hull_section": "Hull Section",
+    "hydraulic_cylinder": "Hydraulic Cylinder",
+    "hydraulic_pump": "Hydraulic Pump",
+    "hydraulics_shop": "Hydraulics Shop",
+    "hydro_turbine": "Water Turbine",
+    "industrial_ac": "Industrial AC",
+    "industrial_heater": "Industrial Heater",
+    "ink": "Ink",
+    "iron_bar": "Iron Bar",
+    "iron_ore": "Iron Ore",
+    "ketchup": "Ketchup",
+    "kitchen": "Kitchen",
+    "lamp": "Lamp",
+    "lantern": "Lantern",
+    "latex": "Latex",
+    "leather": "Leather",
+    "led_light_bar": "LED Light Bar",
+    "lettuce": "Lettuce",
+    "lettuce_seeds": "Lettuce Seeds",
+    "linen": "Linen",
+    "linseed_oil": "Linseed Oil",
+    "lithium_ore": "Lithium Ore",
+    "loom": "Loom",
+    "lounge_sofa": "Lounge Sofa",
+    "lumber_stack": "Lumber Stack",
+    "machine_parts": "Machine Parts",
+    "machine_shop": "Machine Shop",
+    "mahogany": "Mahogany",
+    "mahogany_sapling": "Mahogany Sapling",
+    "mannequin": "Mannequin",
+    "manufacturing_press": "Manufacturing Press",
+    "marble": "Marble",
+    "marble_column": "Marble Column",
+    "marble_tile": "Marble Tile",
+    "marine_engine": "Marine Engine",
+    "menu_stand": "Menu Stand",
+    "metal_shop": "Metal Shop",
+    "microchip": "Microchip",
+    "mill": "Mill",
+    "mining_barrow": "Mining Barrow",
+    "mining_excavator": "Mining Excavator",
+    "mirror": "Wall Mirror",
+    "mirror_ball": "Mirror Ball",
+    "mirror_panel": "Mirror Panel",
+    "mirror_wall_panel": "Mirror Wall Panel",
+    "mop_cart": "Mop Cart",
+    "motherboard": "Motherboard",
+    "mozzarella": "Mozzarella",
+    "museum_glass": "Museum Glass",
+    "mushroom": "Mushroom",
+    "mushy_peas": "Mushy Peas",
+    "mustard": "Mustard",
+    "mustard_seeds": "Mustard Seeds",
+    "mutton": "Mutton",
+    "nails": "Nails",
+    "naphtha": "Naphtha",
+    "nav_suite": "Navigation Suite",
+    "neon_marquee": "Neon Marquee",
+    "neon_sign": "Neon Sign",
+    "nori": "Nori",
+    "nutella": "Hazelnut spread",
+    "office_chair": "Office Chair",
+    "oil_drum": "Liquid Drum",
+    "oil_generator": "Oil-fired Generator Set",
+    "oil_pump": "Pumpjack",
+    "oil_refinery": "Oil Refinery",
+    "onion_seeds": "Onion Seeds",
+    "onions": "Onions",
+    "pallet": "Pallet",
+    "pallet_jack": "Pallet Jack",
+    "pallet_rack": "Pallet Rack",
+    "paper": "Paper",
+    "parking_spot": "Parking Spot",
+    "patty": "Beef Patty",
+    "pea_seeds": "Pea Seeds",
+    "peas": "Peas",
+    "pepperoni": "Pepperoni",
+    "picture_frame": "Picture Frame",
+    "pig": "Pig",
+    "pizza_bundle": "Pizza Cart Bundle",
+    "plank": "Planks",
+    "plant": "Plant",
+    "planter": "Planter Box",
+    "plastic_part": "Moulded Plastic Part",
+    "plastic_pellet": "Plastic Pellets",
+    "plastic_sheet": "Plastic Sheet",
+    "playing_card_art": "Playing Card Art",
+    "playing_cards": "Playing Cards",
+    "poker_table": "Poker Table",
+    "polished_concrete": "Polished Concrete",
+    "polysilicon": "Polysilicon",
+    "pork": "Pork",
+    "portable_ac": "Portable AC",
+    "potato": "Potato",
+    "potato_seeds": "Seed Potatoes",
+    "potted_palm": "Potted Palm",
+    "propane": "Propane",
+    "propeller": "Propeller",
+    "psu": "Power Supply",
+    "quartz": "Quartz",
+    "rack": "Storage Rack",
+    "ram": "RAM Stick",
+    "rebar": "Rebar",
+    "red_carpet_runner": "Red Carpet Runner",
+    "reel_assembly": "Reel Assembly",
+    "relish": "Relish",
+    "rice": "Sushi Rice",
+    "rice_seeds": "Rice Seed",
+    "roof_tile": "Roof Tile",
+    "rope_barrier": "Rope Barrier",
+    "roulette_table": "Roulette Table",
+    "roulette_wheel": "Roulette Wheel",
+    "rubber": "Rubber",
+    "rubber_sapling": "Rubber Sapling",
+    "rug": "Rug",
+    "salmon": "Salmon",
+    "salsa": "Salsa",
+    "sawmill": "Sawmill",
+    "scarf": "Knit Scarf",
+    "screen": "Monitor",
+    "seismic_streamer": "Seismic Streamer",
+    "self_checkout": "Self-Checkout Kiosk",
+    "sheep": "Sheep",
+    "shelving_unit": "Shelving Unit",
+    "shipping_container": "Shipping Container",
+    "shop_bench": "Shop Bench",
+    "shop_freezer": "Shop Freezer",
+    "shop_register": "Cash Register",
+    "shop_shelf": "Shop Shelf",
+    "silicon_wafer": "Silicon Wafer",
+    "skid_steer": "Skid-Steer Loader",
+    "skylight": "Skylight",
+    "slippers": "Wool Slippers",
+    "slot_cabinet": "Slot Cabinet",
+    "slot_classic": "Classic Slot Machine",
+    "slot_jackpot": "Jackpot Slot Machine",
+    "slot_video": "Video Slot Machine",
+    "sneakers": "Sneakers",
+    "sofa": "Sofa",
+    "sonar_array": "Sonar Array",
+    "soy": "Soy Sauce",
+    "soybean": "Soybeans",
+    "soybean_seeds": "Soybean Seed",
+    "space_heater": "Space Heater",
+    "stage_platform": "Stage Platform",
+    "stanchion": "Queue Stanchion",
+    "station_fryer": "Fryer Station",
+    "station_grill": "Grill Station",
+    "station_oven": "Oven Station",
+    "station_pan": "Pan Station",
+    "station_pot": "Pot Station",
+    "station_prep": "Prep Counter",
+    "steel_beam": "Steel Beam",
+    "steel_cable": "Steel Cable",
+    "steel_mill": "Steel Mill",
+    "steel_plate": "Steel Plate",
+    "steel_sheet": "Steel Sheet",
+    "stockroom_rack": "Stockroom Rack",
+    "stonecutter": "Stonecutter",
+    "stool": "Stool",
+    "storage_locker": "Storage Lockers",
+    "strawberry": "Strawberry",
+    "strawberry_seeds": "Strawberry Seeds",
+    "sunflower": "Sunflower",
+    "sunflower_seeds": "Sunflower Seeds",
+    "survey_array": "Survey Array",
+    "survey_tower": "Survey Tower",
+    "survey_tripod": "Survey Tripod",
+    "sushi_bundle": "Sushi Cart Bundle",
+    "sweater": "Wool Sweater",
+    "table": "Table",
+    "table_long": "Long Table",
+    "takeout_counter": "Takeout Counter",
+    "tartar": "Tartar",
+    "tire": "Tire",
+    "tomato": "Tomato",
+    "tomato_seeds": "Tomato Seeds",
+    "tortilla": "Tortilla",
+    "toy_blocks": "Toy Blocks",
+    "tracks": "Crawler Tracks",
+    "tree_sapling": "Tree Sapling",
+    "trough": "Feed Trough",
+    "tv": "TV",
+    "unique_display": "Unique Item Display Platform",
+    "varnish": "Varnish",
+    "vase": "Ceramic Vase",
+    "vehicle_assembly_platform": "Vehicle Assembly Platform",
+    "vehicle_cab": "Vehicle Cab",
+    "velvet": "Velvet",
+    "velvet_curtain": "Velvet Curtain",
+    "vinegar": "Vinegar",
+    "vulcanizer": "Vulcanizer",
+    "wall_clock": "Wall Clock",
+    "wall_sconce": "Wall Sconce",
+    "wallpaper": "Wallpaper",
+    "wardrobe": "Wardrobe",
+    "wasabi": "Wasabi",
+    "wasabi_seeds": "Wasabi Seeds",
+    "wheat": "Wheat",
+    "wheat_seeds": "Wheat Seed",
+    "wind_turbine": "Wind Turbine",
+    "window_curtain": "Curtain Wall",
+    "window_office": "Office Window",
+    "window_ribbon": "Ribbon Window",
+    "window_standard": "Standard Window",
+    "window_tall": "Tall Window",
+    "window_wide": "Wide Window",
+    "wingback_armchair": "Wingback Armchair",
+    "wire": "Wire",
+    "wood": "Lumber",
+    "wood_shelf": "Wooden Shop Shelf",
+    "wool": "Wool",
+    "workbench": "Workbench"
+  },
+  "recipes": {
+    "air_conditioner": {
+      "label": "Build an air conditioner",
+      "station": "electronics_bench",
+      "product": "air_conditioner",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "circuit_board": 1,
+        "copper_wire": 10,
+        "machine_parts": 2,
+        "plastic_part": 3,
+        "steel_sheet": 6
+      }
+    },
+    "anchor_chain": {
+      "label": "Forge anchor chain",
+      "station": "foundry",
+      "product": "anchor_chain",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "iron_bar": 10,
+        "steel_cable": 2
+      }
+    },
+    "aquarium": {
+      "label": "Build an aquarium",
+      "station": "carpentry_bench",
+      "product": "aquarium",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "glass": 10,
+        "hardwood": 8,
+        "steel_sheet": 2,
+        "wire": 3
+      }
+    },
+    "armchair": {
+      "label": "Build an armchair",
+      "station": "carpentry_bench",
+      "product": "armchair",
+      "batch": 1,
+      "rate": 0.1,
+      "inputs": {
+        "fabric": 8,
+        "nails": 8,
+        "plank": 10
+      }
+    },
+    "atm": {
+      "label": "Build a cash machine",
+      "station": "electronics_bench",
+      "product": "atm",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "circuit_board": 2,
+        "machine_parts": 1,
+        "plastic_part": 2,
+        "screen": 1,
+        "steel_sheet": 6
+      }
+    },
+    "back_bar_shelf": {
+      "label": "Build a back bar shelf",
+      "station": "carpentry_bench",
+      "product": "back_bar_shelf",
+      "batch": 1,
+      "rate": 0.045,
+      "inputs": {
+        "glass": 6,
+        "hardwood": 14,
+        "mirror": 1,
+        "plank": 8
+      }
+    },
+    "balaclava": {
+      "label": "Knit a balaclava",
+      "station": "loom",
+      "product": "balaclava",
+      "batch": 1,
+      "rate": 0.25,
+      "inputs": {
+        "fabric": 2
+      }
+    },
+    "bar_counter": {
+      "label": "Build a bar counter",
+      "station": "carpentry_bench",
+      "product": "bar_counter",
+      "batch": 1,
+      "rate": 0.035,
+      "inputs": {
+        "hardwood": 18,
+        "marble": 3,
+        "plank": 10,
+        "varnish": 3
+      }
+    },
+    "bar_stool": {
+      "label": "Bend a bar stool",
+      "station": "metal_shop",
+      "product": "bar_stool",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "steel_sheet": 2,
+        "wire": 2
+      }
+    },
+    "barrel": {
+      "label": "Cooper a barrel",
+      "station": "carpentry_bench",
+      "product": "barrel",
+      "batch": 1,
+      "rate": 0.14,
+      "inputs": {
+        "nails": 6,
+        "plank": 8
+      }
+    },
+    "batter": {
+      "label": "Mill batter",
+      "station": "mill",
+      "product": "batter",
+      "batch": 16,
+      "rate": 16,
+      "inputs": {
+        "wheat": 20
+      }
+    },
+    "battery": {
+      "label": "Pack a battery",
+      "station": "electronics_bench",
+      "product": "battery",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "battery_paste": 2,
+        "copper_wire": 2,
+        "plastic_part": 1,
+        "steel_sheet": 1
+      }
+    },
+    "battery_paste": {
+      "label": "Cook battery paste",
+      "station": "chemical_plant",
+      "product": "battery_paste",
+      "batch": 2,
+      "rate": 0.2,
+      "inputs": {
+        "lithium_ore": 1,
+        "quartz": 3
+      }
+    },
+    "beanie": {
+      "label": "Knit a beanie",
+      "station": "loom",
+      "product": "beanie",
+      "batch": 1,
+      "rate": 0.5,
+      "inputs": {
+        "wool": 4
+      }
+    },
+    "bed": {
+      "label": "Build a bed",
+      "station": "carpentry_bench",
+      "product": "bed",
+      "batch": 1,
+      "rate": 0.08,
+      "inputs": {
+        "fabric": 12,
+        "nails": 20,
+        "plank": 30
+      }
+    },
+    "bistro_chair": {
+      "label": "Bend a bistro chair",
+      "station": "metal_shop",
+      "product": "bistro_chair",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "plastic_part": 1,
+        "steel_sheet": 2,
+        "wire": 3
+      }
+    },
+    "blackjack_table": {
+      "label": "Build a blackjack table",
+      "station": "gaming_workshop",
+      "product": "blackjack_table",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "casino_chips": 6,
+        "felt": 2,
+        "gaming_table_frame": 1,
+        "leather": 4,
+        "playing_cards": 4
+      }
+    },
+    "bobble_hat": {
+      "label": "Knit a bobble hat",
+      "station": "loom",
+      "product": "bobble_hat",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "fabric": 1,
+        "wool": 4
+      }
+    },
+    "bookshelf": {
+      "label": "Build a bookshelf",
+      "station": "carpentry_bench",
+      "product": "bookshelf",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "nails": 28,
+        "plank": 22
+      }
+    },
+    "booth_bench": {
+      "label": "Upholster a booth bench",
+      "station": "carpentry_bench",
+      "product": "booth_bench",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "fabric": 12,
+        "nails": 20,
+        "plank": 16
+      }
+    },
+    "brass_trim": {
+      "label": "Cast brass trim",
+      "station": "metal_shop",
+      "product": "brass_trim",
+      "batch": 3,
+      "rate": 0.45,
+      "inputs": {
+        "copper_bar": 2
+      }
+    },
+    "brick": {
+      "label": "Fire bricks",
+      "station": "brick_kiln",
+      "product": "brick",
+      "batch": 8,
+      "rate": 4,
+      "inputs": {
+        "concrete": 2,
+        "wood": 1
+      }
+    },
+    "buns": {
+      "label": "Bake buns",
+      "station": "kitchen",
+      "product": "buns",
+      "batch": 10,
+      "rate": 6.7,
+      "inputs": {
+        "dough": 6
+      }
+    },
+    "burger_bun": {
+      "label": "Bake burger buns",
+      "station": "kitchen",
+      "product": "burger_bun",
+      "batch": 10,
+      "rate": 6.7,
+      "inputs": {
+        "dough": 6
+      }
+    },
+    "cabinet": {
+      "label": "Build a storage cabinet",
+      "station": "metal_shop",
+      "product": "cabinet",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "steel_sheet": 6,
+        "wire": 4
+      }
+    },
+    "cafe_table": {
+      "label": "Build a cafe table",
+      "station": "carpentry_bench",
+      "product": "cafe_table",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "nails": 16,
+        "plank": 14,
+        "steel_sheet": 1
+      }
+    },
+    "cafe_table_square": {
+      "label": "Build a square cafe table",
+      "station": "carpentry_bench",
+      "product": "cafe_table_square",
+      "batch": 1,
+      "rate": 0.11,
+      "inputs": {
+        "nails": 20,
+        "plank": 16
+      }
+    },
+    "candle": {
+      "label": "Pour candles",
+      "station": "mill",
+      "product": "candle",
+      "batch": 2,
+      "rate": 1,
+      "inputs": {
+        "sunflower": 12,
+        "wool": 1
+      }
+    },
+    "cardigan": {
+      "label": "Knit a cardigan",
+      "station": "loom",
+      "product": "cardigan",
+      "batch": 1,
+      "rate": 0.14,
+      "inputs": {
+        "fabric": 7,
+        "wool": 2
+      }
+    },
+    "carpet": {
+      "label": "Weave carpet",
+      "station": "loom",
+      "product": "carpet",
+      "batch": 2,
+      "rate": 0.8,
+      "inputs": {
+        "wool": 3
+      }
+    },
+    "cashier_cage": {
+      "label": "Build a cashier cage",
+      "station": "gaming_workshop",
+      "product": "cashier_cage",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "copper_wire": 10,
+        "glass": 6,
+        "machine_parts": 3,
+        "steel_sheet": 12
+      }
+    },
+    "casino_chips": {
+      "label": "Print casino chips",
+      "station": "manufacturing_press",
+      "product": "casino_chips",
+      "batch": 10,
+      "rate": 6,
+      "inputs": {
+        "chip_blank": 4,
+        "ink": 1,
+        "plastic_pellet": 2
+      }
+    },
+    "chair": {
+      "label": "Build a chair",
+      "station": "carpentry_bench",
+      "product": "chair",
+      "batch": 1,
+      "rate": 0.35,
+      "inputs": {
+        "nails": 12,
+        "plank": 8
+      }
+    },
+    "champagne_stand": {
+      "label": "Build a champagne stand",
+      "station": "metal_shop",
+      "product": "champagne_stand",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "glass": 2,
+        "steel_sheet": 3,
+        "wire": 2
+      }
+    },
+    "chandelier": {
+      "label": "Wire a crystal chandelier",
+      "station": "electronics_bench",
+      "product": "chandelier",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "copper_wire": 6,
+        "glass": 12,
+        "steel_sheet": 4,
+        "wire": 6
+      }
+    },
+    "chip_blank": {
+      "label": "Fire chip blanks",
+      "station": "brick_kiln",
+      "product": "chip_blank",
+      "batch": 8,
+      "rate": 4,
+      "inputs": {
+        "latex": 2,
+        "marble": 1
+      }
+    },
+    "circuit_board": {
+      "label": "Etch a circuit board",
+      "station": "electronics_bench",
+      "product": "circuit_board",
+      "batch": 1,
+      "rate": 0.25,
+      "inputs": {
+        "copper_wire": 3,
+        "glass": 2
+      }
+    },
+    "clothing_rack": {
+      "label": "Build a clothing rack",
+      "station": "metal_shop",
+      "product": "clothing_rack",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "plank": 6,
+        "steel_sheet": 17,
+        "wire": 12
+      }
+    },
+    "coal_bunker": {
+      "label": "Build a coal bunker",
+      "station": "metal_shop",
+      "product": "coal_bunker",
+      "batch": 1,
+      "rate": 0.025,
+      "inputs": {
+        "gear": 4,
+        "steel_beam": 10,
+        "steel_plate": 20,
+        "steel_sheet": 30
+      }
+    },
+    "coal_generator": {
+      "label": "Build a coal-fired generator set",
+      "station": "machine_shop",
+      "product": "coal_generator",
+      "batch": 1,
+      "rate": 0.005,
+      "inputs": {
+        "circuit_board": 20,
+        "computer": 1,
+        "copper_wire": 80,
+        "hull_section": 8,
+        "machine_parts": 60,
+        "marine_engine": 10,
+        "steel_beam": 30,
+        "steel_plate": 40
+      }
+    },
+    "coat_check_counter": {
+      "label": "Build a coat check counter",
+      "station": "carpentry_bench",
+      "product": "coat_check_counter",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "hardwood": 12,
+        "marble": 2,
+        "plank": 6,
+        "steel_sheet": 2
+      }
+    },
+    "cocktail_cart": {
+      "label": "Build a cocktail cart",
+      "station": "metal_shop",
+      "product": "cocktail_cart",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "glass": 3,
+        "mirror": 1,
+        "steel_sheet": 4,
+        "wire": 3
+      }
+    },
+    "cocktail_table": {
+      "label": "Turn a cocktail table",
+      "station": "stonecutter",
+      "product": "cocktail_table",
+      "batch": 1,
+      "rate": 0.1,
+      "inputs": {
+        "marble": 2,
+        "steel_sheet": 1,
+        "varnish": 1
+      }
+    },
+    "computer": {
+      "label": "Assemble a computer",
+      "station": "electronics_bench",
+      "product": "computer",
+      "batch": 1,
+      "rate": 0.01,
+      "inputs": {
+        "computer_case": 1,
+        "cpu": 1,
+        "motherboard": 1,
+        "psu": 1,
+        "ram": 2,
+        "screen": 1
+      }
+    },
+    "computer_case": {
+      "label": "Fold a computer case",
+      "station": "manufacturing_press",
+      "product": "computer_case",
+      "batch": 1,
+      "rate": 0.07,
+      "inputs": {
+        "plastic_part": 2,
+        "steel_sheet": 3
+      }
+    },
+    "copper_bar": {
+      "label": "Smelt copper bars",
+      "station": "furnace",
+      "product": "copper_bar",
+      "batch": 1,
+      "rate": 0.5,
+      "inputs": {
+        "copper_ore": 2
+      }
+    },
+    "copper_wire": {
+      "label": "Draw copper wire",
+      "station": "metal_shop",
+      "product": "copper_wire",
+      "batch": 10,
+      "rate": 4,
+      "inputs": {
+        "copper_bar": 1
+      }
+    },
+    "cpu": {
+      "label": "Package a CPU",
+      "station": "chip_fab",
+      "product": "cpu",
+      "batch": 1,
+      "rate": 0.006,
+      "inputs": {
+        "copper_wire": 10,
+        "silicon_wafer": 30
+      }
+    },
+    "crate": {
+      "label": "Build a storage crate",
+      "station": "carpentry_bench",
+      "product": "crate",
+      "batch": 1,
+      "rate": 0.35,
+      "inputs": {
+        "nails": 16,
+        "plank": 12
+      }
+    },
+    "curtain_panel": {
+      "label": "Glaze a curtain panel",
+      "station": "glazing_line",
+      "product": "curtain_panel",
+      "batch": 2,
+      "rate": 1,
+      "inputs": {
+        "glass": 3,
+        "steel_sheet": 1
+      }
+    },
+    "cutting_board": {
+      "label": "Cut cutting boards",
+      "station": "sawmill",
+      "product": "cutting_board",
+      "batch": 4,
+      "rate": 1.6,
+      "inputs": {
+        "wood": 3
+      }
+    },
+    "delivery_space": {
+      "label": "Build a delivery space",
+      "station": "metal_shop",
+      "product": "delivery_space",
+      "batch": 1,
+      "rate": 0.13,
+      "inputs": {
+        "concrete": 3,
+        "plank": 12,
+        "steel_sheet": 5
+      }
+    },
+    "desk": {
+      "label": "Build a desk",
+      "station": "carpentry_bench",
+      "product": "desk",
+      "batch": 1,
+      "rate": 0.11,
+      "inputs": {
+        "nails": 30,
+        "plank": 24
+      }
+    },
+    "diesel": {
+      "label": "Distil diesel",
+      "station": "oil_refinery",
+      "product": "diesel",
+      "batch": 3,
+      "rate": 0.9,
+      "inputs": {
+        "crude_oil": 4
+      }
+    },
+    "diner_chair": {
+      "label": "Build a diner chair",
+      "station": "carpentry_bench",
+      "product": "diner_chair",
+      "batch": 1,
+      "rate": 0.25,
+      "inputs": {
+        "fabric": 2,
+        "nails": 8,
+        "plank": 6
+      }
+    },
+    "display_platform": {
+      "label": "Build a display platform",
+      "station": "metal_shop",
+      "product": "display_platform",
+      "batch": 1,
+      "rate": 0.01,
+      "inputs": {
+        "glass": 24,
+        "plank": 44,
+        "steel_sheet": 70,
+        "wire": 36
+      }
+    },
+    "dj_booth": {
+      "label": "Wire a DJ booth",
+      "station": "electronics_bench",
+      "product": "dj_booth",
+      "batch": 1,
+      "rate": 0.016,
+      "inputs": {
+        "circuit_board": 3,
+        "copper_wire": 8,
+        "machine_parts": 2,
+        "plastic_part": 2,
+        "screen": 1,
+        "steel_sheet": 6
+      }
+    },
+    "door_double": {
+      "label": "Build a double door",
+      "station": "carpentry_bench",
+      "product": "door_double",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "nails": 20,
+        "plank": 16
+      }
+    },
+    "door_glass": {
+      "label": "Build a glass door",
+      "station": "metal_shop",
+      "product": "door_glass",
+      "batch": 1,
+      "rate": 0.11,
+      "inputs": {
+        "glass": 8,
+        "steel_sheet": 3
+      }
+    },
+    "door_single": {
+      "label": "Build a single door",
+      "station": "carpentry_bench",
+      "product": "door_single",
+      "batch": 1,
+      "rate": 0.17,
+      "inputs": {
+        "nails": 12,
+        "plank": 10
+      }
+    },
+    "dough": {
+      "label": "Mill dough",
+      "station": "mill",
+      "product": "dough",
+      "batch": 10,
+      "rate": 7.2,
+      "inputs": {
+        "wheat": 20
+      }
+    },
+    "dresser": {
+      "label": "Build a dresser",
+      "station": "carpentry_bench",
+      "product": "dresser",
+      "batch": 1,
+      "rate": 0.04,
+      "inputs": {
+        "nails": 12,
+        "plank": 16
+      }
+    },
+    "drill_head": {
+      "label": "Forge a drill head",
+      "station": "foundry",
+      "product": "drill_head",
+      "batch": 1,
+      "rate": 0.1,
+      "inputs": {
+        "quartz": 8,
+        "steel_sheet": 4
+      }
+    },
+    "echo_sounder": {
+      "label": "Build an echo sounder",
+      "station": "electronics_bench",
+      "product": "echo_sounder",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "circuit_board": 1,
+        "copper_wire": 6,
+        "glass": 2,
+        "steel_sheet": 1
+      }
+    },
+    "electronic_roulette": {
+      "label": "Build an electronic roulette",
+      "station": "gaming_workshop",
+      "product": "electronic_roulette",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "circuit_board": 4,
+        "copper_wire": 12,
+        "glass": 4,
+        "leather": 4,
+        "roulette_wheel": 1,
+        "screen": 2,
+        "steel_sheet": 6
+      }
+    },
+    "elevator": {
+      "label": "Assemble an elevator",
+      "station": "machine_shop",
+      "product": "elevator",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "engine": 1,
+        "gear": 6,
+        "machine_parts": 4,
+        "steel_cable": 6,
+        "steel_sheet": 10
+      }
+    },
+    "engine": {
+      "label": "Build an engine",
+      "station": "machine_shop",
+      "product": "engine",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "copper_wire": 10,
+        "engine_block": 1,
+        "gear": 4,
+        "machine_parts": 2
+      }
+    },
+    "engine_block": {
+      "label": "Cast an engine block",
+      "station": "foundry",
+      "product": "engine_block",
+      "batch": 1,
+      "rate": 0.1,
+      "inputs": {
+        "iron_bar": 6
+      }
+    },
+    "fabric": {
+      "label": "Weave fabric",
+      "station": "loom",
+      "product": "fabric",
+      "batch": 1,
+      "rate": 1,
+      "inputs": {
+        "wool": 2
+      }
+    },
+    "fan_heater": {
+      "label": "Build a fan heater",
+      "station": "metal_shop",
+      "product": "fan_heater",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "copper_wire": 3,
+        "plastic_part": 2,
+        "steel_sheet": 1,
+        "wire": 4
+      }
+    },
+    "felt": {
+      "label": "Press felt",
+      "station": "loom",
+      "product": "felt",
+      "batch": 1,
+      "rate": 0.8,
+      "inputs": {
+        "wool": 3
+      }
+    },
+    "filing_cabinet": {
+      "label": "Build a filing cabinet",
+      "station": "metal_shop",
+      "product": "filing_cabinet",
+      "batch": 1,
+      "rate": 0.055,
+      "inputs": {
+        "steel_sheet": 5,
+        "wire": 3
+      }
+    },
+    "floor_sign": {
+      "label": "Build an A-frame sign",
+      "station": "carpentry_bench",
+      "product": "floor_sign",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "nails": 8,
+        "plank": 12,
+        "plastic_sheet": 1
+      }
+    },
+    "fountain": {
+      "label": "Carve a fountain",
+      "station": "stonecutter",
+      "product": "fountain",
+      "batch": 1,
+      "rate": 0.025,
+      "inputs": {
+        "concrete": 8,
+        "machine_parts": 1,
+        "marble": 6,
+        "steel_sheet": 2
+      }
+    },
+    "franks": {
+      "label": "Grind beef franks",
+      "station": "kitchen",
+      "product": "franks",
+      "batch": 8,
+      "rate": 7.2,
+      "inputs": {
+        "beef": 1
+      }
+    },
+    "fryer_oil": {
+      "label": "Press fryer oil",
+      "station": "mill",
+      "product": "fryer_oil",
+      "batch": 1,
+      "rate": 0.38,
+      "inputs": {
+        "sunflower": 12
+      }
+    },
+    "fuel_tank": {
+      "label": "Build a fuel tank",
+      "station": "metal_shop",
+      "product": "fuel_tank",
+      "batch": 1,
+      "rate": 0.028,
+      "inputs": {
+        "concrete": 6,
+        "steel_beam": 6,
+        "steel_plate": 16,
+        "steel_sheet": 40
+      }
+    },
+    "gaming_table_frame": {
+      "label": "Frame a gaming table",
+      "station": "carpentry_bench",
+      "product": "gaming_table_frame",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "mahogany": 6,
+        "plank": 10,
+        "varnish": 2
+      }
+    },
+    "garage_roller": {
+      "label": "Build a garage door",
+      "station": "metal_shop",
+      "product": "garage_roller",
+      "batch": 1,
+      "rate": 0.075,
+      "inputs": {
+        "steel_sheet": 10,
+        "wire": 6
+      }
+    },
+    "gear": {
+      "label": "Cast gears",
+      "station": "foundry",
+      "product": "gear",
+      "batch": 2,
+      "rate": 0.6,
+      "inputs": {
+        "iron_bar": 1
+      }
+    },
+    "giant_dice": {
+      "label": "Build giant dice",
+      "station": "carpentry_bench",
+      "product": "giant_dice",
+      "batch": 1,
+      "rate": 0.18,
+      "inputs": {
+        "nails": 6,
+        "plank": 12,
+        "varnish": 2
+      }
+    },
+    "glass": {
+      "label": "Melt glass",
+      "station": "furnace",
+      "product": "glass",
+      "batch": 3,
+      "rate": 1.5,
+      "inputs": {
+        "concrete": 1
+      }
+    },
+    "glass_counter": {
+      "label": "Build a glass counter",
+      "station": "metal_shop",
+      "product": "glass_counter",
+      "batch": 1,
+      "rate": 0.035,
+      "inputs": {
+        "glass": 32,
+        "steel_sheet": 12,
+        "wire": 6
+      }
+    },
+    "gold_bar": {
+      "label": "Smelt a gold bar",
+      "station": "furnace",
+      "product": "gold_bar",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "gold_ore": 3
+      }
+    },
+    "gold_leaf": {
+      "label": "Beat gold leaf",
+      "station": "metal_shop",
+      "product": "gold_leaf",
+      "batch": 20,
+      "rate": 2,
+      "inputs": {
+        "gold_bar": 1
+      }
+    },
+    "gold_statue": {
+      "label": "Gild a statue",
+      "station": "stonecutter",
+      "product": "gold_statue",
+      "batch": 1,
+      "rate": 0.015,
+      "inputs": {
+        "concrete": 2,
+        "gold_leaf": 12,
+        "marble": 4
+      }
+    },
+    "grain_silo": {
+      "label": "Build a grain silo",
+      "station": "metal_shop",
+      "product": "grain_silo",
+      "batch": 1,
+      "rate": 0.0057,
+      "inputs": {
+        "steel_sheet": 140,
+        "wire": 50
+      }
+    },
+    "guac": {
+      "label": "Mash guacamole",
+      "station": "kitchen",
+      "product": "guac",
+      "batch": 6,
+      "rate": 10.02,
+      "inputs": {
+        "avocado": 4
+      }
+    },
+    "hardwood": {
+      "label": "Mill hardwood boards",
+      "station": "sawmill",
+      "product": "hardwood",
+      "batch": 3,
+      "rate": 1.5,
+      "inputs": {
+        "wood": 2
+      }
+    },
+    "hull_section": {
+      "label": "Weld a hull section",
+      "station": "metal_shop",
+      "product": "hull_section",
+      "batch": 1,
+      "rate": 0.004,
+      "inputs": {
+        "machine_parts": 2,
+        "steel_beam": 4,
+        "steel_plate": 12
+      }
+    },
+    "hydraulic_cylinder": {
+      "label": "Hone a hydraulic cylinder",
+      "station": "hydraulics_shop",
+      "product": "hydraulic_cylinder",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "iron_bar": 1,
+        "steel_sheet": 3
+      }
+    },
+    "hydraulic_pump": {
+      "label": "Assemble a hydraulic pump",
+      "station": "hydraulics_shop",
+      "product": "hydraulic_pump",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "copper_wire": 6,
+        "gear": 2,
+        "machine_parts": 1
+      }
+    },
+    "hydro_turbine": {
+      "label": "Build a water turbine",
+      "station": "machine_shop",
+      "product": "hydro_turbine",
+      "batch": 1,
+      "rate": 0.0035,
+      "inputs": {
+        "computer": 1,
+        "copper_wire": 40,
+        "gear": 60,
+        "hull_section": 6,
+        "machine_parts": 50,
+        "propeller": 8,
+        "steel_beam": 10,
+        "steel_plate": 60
+      }
+    },
+    "industrial_ac": {
+      "label": "Build an industrial AC",
+      "station": "machine_shop",
+      "product": "industrial_ac",
+      "batch": 1,
+      "rate": 0.005,
+      "inputs": {
+        "circuit_board": 3,
+        "copper_wire": 30,
+        "machine_parts": 8,
+        "plastic_part": 6,
+        "steel_sheet": 30
+      }
+    },
+    "industrial_heater": {
+      "label": "Build an industrial heater",
+      "station": "metal_shop",
+      "product": "industrial_heater",
+      "batch": 1,
+      "rate": 0.008,
+      "inputs": {
+        "circuit_board": 2,
+        "copper_wire": 16,
+        "machine_parts": 6,
+        "steel_beam": 2,
+        "steel_sheet": 30
+      }
+    },
+    "ink": {
+      "label": "Mix ink",
+      "station": "chemical_plant",
+      "product": "ink",
+      "batch": 4,
+      "rate": 2.4,
+      "inputs": {
+        "iron_ore": 1,
+        "linseed_oil": 2
+      }
+    },
+    "iron_bar": {
+      "label": "Smelt iron bars",
+      "station": "furnace",
+      "product": "iron_bar",
+      "batch": 1,
+      "rate": 0.5,
+      "inputs": {
+        "iron_ore": 2
+      }
+    },
+    "ketchup": {
+      "label": "Cook ketchup",
+      "station": "kitchen",
+      "product": "ketchup",
+      "batch": 30,
+      "rate": 55.5,
+      "inputs": {
+        "tomato": 8
+      }
+    },
+    "lamp": {
+      "label": "Build a floor lamp",
+      "station": "electronics_bench",
+      "product": "lamp",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "glass": 2,
+        "plastic_part": 1,
+        "steel_sheet": 1,
+        "wire": 5
+      }
+    },
+    "lantern": {
+      "label": "Assemble a lantern",
+      "station": "electronics_bench",
+      "product": "lantern",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "glass": 3,
+        "steel_sheet": 1,
+        "wire": 4
+      }
+    },
+    "leather": {
+      "label": "Tan leather",
+      "station": "chemical_plant",
+      "product": "leather",
+      "batch": 2,
+      "rate": 1,
+      "inputs": {
+        "hide": 1,
+        "linseed_oil": 1
+      }
+    },
+    "led_light_bar": {
+      "label": "Assemble an LED light bar",
+      "station": "electronics_bench",
+      "product": "led_light_bar",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "circuit_board": 1,
+        "copper_wire": 6,
+        "plastic_sheet": 1,
+        "steel_sheet": 1
+      }
+    },
+    "linen": {
+      "label": "Weave linen",
+      "station": "loom",
+      "product": "linen",
+      "batch": 1,
+      "rate": 1,
+      "inputs": {
+        "flax": 6
+      }
+    },
+    "linseed_oil": {
+      "label": "Press linseed oil",
+      "station": "mill",
+      "product": "linseed_oil",
+      "batch": 1,
+      "rate": 1.5,
+      "inputs": {
+        "flax": 3
+      }
+    },
+    "lounge_sofa": {
+      "label": "Upholster a lounge sofa",
+      "station": "carpentry_bench",
+      "product": "lounge_sofa",
+      "batch": 1,
+      "rate": 0.045,
+      "inputs": {
+        "fabric": 12,
+        "hardwood": 4,
+        "nails": 12,
+        "plank": 16
+      }
+    },
+    "lumber_stack": {
+      "label": "Build a lumber stack",
+      "station": "carpentry_bench",
+      "product": "lumber_stack",
+      "batch": 1,
+      "rate": 0.032,
+      "inputs": {
+        "nails": 90,
+        "plank": 80
+      }
+    },
+    "m_brick_kiln": {
+      "label": "Build a brick kiln",
+      "station": "machine_shop",
+      "product": "brick_kiln",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "concrete": 40,
+        "iron_bar": 12,
+        "steel_sheet": 6
+      }
+    },
+    "m_carpentry": {
+      "label": "Build a carpentry bench",
+      "station": "machine_shop",
+      "product": "carpentry_bench",
+      "batch": 1,
+      "rate": 0.025,
+      "inputs": {
+        "machine_parts": 5,
+        "nails": 100,
+        "plank": 90
+      }
+    },
+    "m_chemical_plant": {
+      "label": "Build a chemical plant",
+      "station": "machine_shop",
+      "product": "chemical_plant",
+      "batch": 1,
+      "rate": 0.004,
+      "inputs": {
+        "glass": 10,
+        "machine_parts": 20,
+        "steel_sheet": 30
+      }
+    },
+    "m_chip_fab": {
+      "label": "Build a chip fab",
+      "station": "machine_shop",
+      "product": "chip_fab",
+      "batch": 1,
+      "rate": 0.0035,
+      "inputs": {
+        "copper_wire": 40,
+        "glass": 30,
+        "machine_parts": 30,
+        "steel_sheet": 20
+      }
+    },
+    "m_electronics": {
+      "label": "Build an electronics bench",
+      "station": "machine_shop",
+      "product": "electronics_bench",
+      "batch": 1,
+      "rate": 0.016,
+      "inputs": {
+        "glass": 20,
+        "machine_parts": 18,
+        "wire": 60
+      }
+    },
+    "m_foundry": {
+      "label": "Build a foundry",
+      "station": "machine_shop",
+      "product": "foundry",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "concrete": 30,
+        "iron_bar": 20,
+        "machine_parts": 8,
+        "steel_sheet": 10
+      }
+    },
+    "m_furnace": {
+      "label": "Build a furnace",
+      "station": "machine_shop",
+      "product": "furnace",
+      "batch": 1,
+      "rate": 0.024,
+      "inputs": {
+        "concrete": 36,
+        "iron_ore": 100
+      }
+    },
+    "m_gaming_workshop": {
+      "label": "Build a gaming workshop",
+      "station": "machine_shop",
+      "product": "gaming_workshop",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "hardwood": 30,
+        "iron_bar": 20,
+        "machine_parts": 10,
+        "steel_sheet": 15
+      }
+    },
+    "m_glazing_line": {
+      "label": "Build a glazing line",
+      "station": "machine_shop",
+      "product": "glazing_line",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "glass": 20,
+        "iron_bar": 10,
+        "machine_parts": 8,
+        "steel_sheet": 20
+      }
+    },
+    "m_hydraulics_shop": {
+      "label": "Build a hydraulics shop",
+      "station": "machine_shop",
+      "product": "hydraulics_shop",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "copper_wire": 10,
+        "glass": 4,
+        "iron_bar": 12,
+        "machine_parts": 10,
+        "steel_sheet": 12
+      }
+    },
+    "m_kitchen": {
+      "label": "Build a kitchen",
+      "station": "machine_shop",
+      "product": "kitchen",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "glass": 12,
+        "steel_sheet": 45,
+        "wire": 30
+      }
+    },
+    "m_loom": {
+      "label": "Build a loom",
+      "station": "machine_shop",
+      "product": "loom",
+      "batch": 1,
+      "rate": 0.025,
+      "inputs": {
+        "machine_parts": 4,
+        "plank": 60,
+        "wire": 30
+      }
+    },
+    "m_machine_shop": {
+      "label": "Build a machine shop",
+      "station": "machine_shop",
+      "product": "machine_shop",
+      "batch": 1,
+      "rate": 0.021,
+      "inputs": {
+        "machine_parts": 45,
+        "plank": 30,
+        "steel_sheet": 40
+      }
+    },
+    "m_metal": {
+      "label": "Build a metal shop",
+      "station": "machine_shop",
+      "product": "metal_shop",
+      "batch": 1,
+      "rate": 0.015,
+      "inputs": {
+        "machine_parts": 24,
+        "steel_sheet": 30
+      }
+    },
+    "m_mill": {
+      "label": "Build a mill",
+      "station": "machine_shop",
+      "product": "mill",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "concrete": 12,
+        "iron_bar": 20,
+        "plank": 60
+      }
+    },
+    "m_oil_refinery": {
+      "label": "Build an oil refinery",
+      "station": "machine_shop",
+      "product": "oil_refinery",
+      "batch": 1,
+      "rate": 0.006,
+      "inputs": {
+        "concrete": 40,
+        "copper_wire": 40,
+        "glass": 12,
+        "iron_bar": 40,
+        "machine_parts": 20,
+        "steel_sheet": 60
+      }
+    },
+    "m_press": {
+      "label": "Build a manufacturing press",
+      "station": "machine_shop",
+      "product": "manufacturing_press",
+      "batch": 1,
+      "rate": 0.04,
+      "inputs": {
+        "iron_bar": 85,
+        "plank": 50
+      }
+    },
+    "m_sawmill": {
+      "label": "Build a sawmill",
+      "station": "machine_shop",
+      "product": "sawmill",
+      "batch": 1,
+      "rate": 0.028,
+      "inputs": {
+        "iron_ore": 55,
+        "wood": 55
+      }
+    },
+    "m_steel_mill": {
+      "label": "Build a steel mill",
+      "station": "machine_shop",
+      "product": "steel_mill",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "concrete": 30,
+        "gear": 8,
+        "iron_bar": 25,
+        "machine_parts": 10,
+        "steel_sheet": 15
+      }
+    },
+    "m_stonecutter": {
+      "label": "Build a stonecutter",
+      "station": "machine_shop",
+      "product": "stonecutter",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "concrete": 25,
+        "iron_bar": 15,
+        "steel_sheet": 8
+      }
+    },
+    "m_vehicle_assembly_platform": {
+      "label": "Build a vehicle assembly platform",
+      "station": "machine_shop",
+      "product": "vehicle_assembly_platform",
+      "batch": 1,
+      "rate": 0.006,
+      "inputs": {
+        "circuit_board": 4,
+        "gear": 10,
+        "hydraulic_cylinder": 10,
+        "hydraulic_pump": 4,
+        "iron_bar": 20,
+        "machine_parts": 20,
+        "screen": 1,
+        "steel_sheet": 30
+      }
+    },
+    "m_vulcanizer": {
+      "label": "Build a vulcanizer",
+      "station": "machine_shop",
+      "product": "vulcanizer",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "concrete": 20,
+        "glass": 4,
+        "iron_bar": 10,
+        "machine_parts": 6,
+        "steel_sheet": 15
+      }
+    },
+    "machine_parts": {
+      "label": "Machine parts",
+      "station": "manufacturing_press",
+      "product": "machine_parts",
+      "batch": 1,
+      "rate": 0.4,
+      "inputs": {
+        "steel_sheet": 2,
+        "wire": 6
+      }
+    },
+    "mannequin": {
+      "label": "Build a mannequin",
+      "station": "carpentry_bench",
+      "product": "mannequin",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "fabric": 8,
+        "nails": 4,
+        "plank": 6
+      }
+    },
+    "marble_column": {
+      "label": "Cut a marble column",
+      "station": "stonecutter",
+      "product": "marble_column",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "concrete": 2,
+        "marble": 8
+      }
+    },
+    "marble_tile": {
+      "label": "Polish marble tile",
+      "station": "stonecutter",
+      "product": "marble_tile",
+      "batch": 2,
+      "rate": 0.6,
+      "inputs": {
+        "marble": 1
+      }
+    },
+    "marine_engine": {
+      "label": "Build a marine engine",
+      "station": "machine_shop",
+      "product": "marine_engine",
+      "batch": 1,
+      "rate": 0.01,
+      "inputs": {
+        "copper_wire": 20,
+        "engine": 2,
+        "gear": 8,
+        "hydraulic_pump": 1,
+        "steel_plate": 6
+      }
+    },
+    "menu_stand": {
+      "label": "Build a menu stand",
+      "station": "carpentry_bench",
+      "product": "menu_stand",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "nails": 8,
+        "plank": 8,
+        "plastic_sheet": 1
+      }
+    },
+    "microchip": {
+      "label": "Cut microchips",
+      "station": "chip_fab",
+      "product": "microchip",
+      "batch": 2,
+      "rate": 0.24,
+      "inputs": {
+        "copper_wire": 2,
+        "silicon_wafer": 1
+      }
+    },
+    "mirror": {
+      "label": "Press a wall mirror",
+      "station": "manufacturing_press",
+      "product": "mirror",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "glass": 4,
+        "steel_sheet": 2
+      }
+    },
+    "mirror_ball": {
+      "label": "Facet a mirror ball",
+      "station": "metal_shop",
+      "product": "mirror_ball",
+      "batch": 1,
+      "rate": 0.1,
+      "inputs": {
+        "mirror": 1,
+        "steel_sheet": 1,
+        "wire": 2
+      }
+    },
+    "mirror_panel": {
+      "label": "Silver mirror panels",
+      "station": "glazing_line",
+      "product": "mirror_panel",
+      "batch": 2,
+      "rate": 0.6,
+      "inputs": {
+        "glass": 3,
+        "steel_sheet": 1
+      }
+    },
+    "mirror_wall_panel": {
+      "label": "Silver a mirror wall panel",
+      "station": "glazing_line",
+      "product": "mirror_wall_panel",
+      "batch": 1,
+      "rate": 0.09,
+      "inputs": {
+        "glass": 8,
+        "hardwood": 2,
+        "steel_sheet": 3
+      }
+    },
+    "mop_cart": {
+      "label": "Assemble a mop cart",
+      "station": "metal_shop",
+      "product": "mop_cart",
+      "batch": 1,
+      "rate": 0.04,
+      "inputs": {
+        "plank": 4,
+        "plastic_part": 2,
+        "steel_sheet": 8,
+        "wire": 4
+      }
+    },
+    "motherboard": {
+      "label": "Assemble a motherboard",
+      "station": "electronics_bench",
+      "product": "motherboard",
+      "batch": 1,
+      "rate": 0.014,
+      "inputs": {
+        "circuit_board": 2,
+        "copper_wire": 12,
+        "microchip": 12
+      }
+    },
+    "museum_glass": {
+      "label": "Laminate museum glass",
+      "station": "glazing_line",
+      "product": "museum_glass",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "glass": 6,
+        "quartz": 2
+      }
+    },
+    "mushy_peas": {
+      "label": "Mash mushy peas",
+      "station": "kitchen",
+      "product": "mushy_peas",
+      "batch": 10,
+      "rate": 16.7,
+      "inputs": {
+        "peas": 6
+      }
+    },
+    "nails": {
+      "label": "Press nails",
+      "station": "manufacturing_press",
+      "product": "nails",
+      "batch": 20,
+      "rate": 8,
+      "inputs": {
+        "iron_bar": 1
+      }
+    },
+    "naphtha": {
+      "label": "Crack naphtha",
+      "station": "oil_refinery",
+      "product": "naphtha",
+      "batch": 4,
+      "rate": 1.2,
+      "inputs": {
+        "crude_oil": 5
+      }
+    },
+    "nav_suite": {
+      "label": "Assemble a navigation suite",
+      "station": "electronics_bench",
+      "product": "nav_suite",
+      "batch": 1,
+      "rate": 0.007,
+      "inputs": {
+        "circuit_board": 4,
+        "computer": 1,
+        "copper_wire": 10,
+        "glass": 6,
+        "screen": 2
+      }
+    },
+    "neon_marquee": {
+      "label": "Build a neon marquee",
+      "station": "electronics_bench",
+      "product": "neon_marquee",
+      "batch": 1,
+      "rate": 0.04,
+      "inputs": {
+        "neon_sign": 2,
+        "steel_sheet": 3,
+        "wire": 4
+      }
+    },
+    "neon_sign": {
+      "label": "Bend a neon sign",
+      "station": "electronics_bench",
+      "product": "neon_sign",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "circuit_board": 1,
+        "copper_wire": 6,
+        "glass": 4
+      }
+    },
+    "nutella": {
+      "label": "Grind hazelnut spread",
+      "station": "kitchen",
+      "product": "nutella",
+      "batch": 7,
+      "rate": 5.74,
+      "inputs": {
+        "hazelnut": 5
+      }
+    },
+    "office_chair": {
+      "label": "Assemble an office chair",
+      "station": "metal_shop",
+      "product": "office_chair",
+      "batch": 1,
+      "rate": 0.08,
+      "inputs": {
+        "fabric": 4,
+        "plastic_part": 2,
+        "steel_sheet": 2,
+        "wire": 2
+      }
+    },
+    "oil_drum": {
+      "label": "Roll a liquid drum",
+      "station": "metal_shop",
+      "product": "oil_drum",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "steel_sheet": 4
+      }
+    },
+    "oil_generator": {
+      "label": "Build an oil-fired generator set",
+      "station": "machine_shop",
+      "product": "oil_generator",
+      "batch": 1,
+      "rate": 0.0065,
+      "inputs": {
+        "circuit_board": 10,
+        "computer": 1,
+        "copper_wire": 60,
+        "hull_section": 4,
+        "machine_parts": 30,
+        "marine_engine": 8,
+        "steel_plate": 30
+      }
+    },
+    "oil_pump": {
+      "label": "Build a pumpjack",
+      "station": "metal_shop",
+      "product": "oil_pump",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "gear": 6,
+        "iron_bar": 10,
+        "machine_parts": 4,
+        "steel_sheet": 20
+      }
+    },
+    "pallet_jack": {
+      "label": "Assemble a pallet jack",
+      "station": "metal_shop",
+      "product": "pallet_jack",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "steel_sheet": 5,
+        "wire": 3
+      }
+    },
+    "pallet_rack": {
+      "label": "Build a pallet rack",
+      "station": "metal_shop",
+      "product": "pallet_rack",
+      "batch": 1,
+      "rate": 0.022,
+      "inputs": {
+        "plank": 20,
+        "steel_sheet": 38,
+        "wire": 20
+      }
+    },
+    "paper": {
+      "label": "Pulp paper",
+      "station": "mill",
+      "product": "paper",
+      "batch": 4,
+      "rate": 2,
+      "inputs": {
+        "wood": 1
+      }
+    },
+    "parking_spot": {
+      "label": "Build a parking spot",
+      "station": "metal_shop",
+      "product": "parking_spot",
+      "batch": 1,
+      "rate": 0.38,
+      "inputs": {
+        "concrete": 2,
+        "steel_sheet": 1
+      }
+    },
+    "patty": {
+      "label": "Press beef patties",
+      "station": "kitchen",
+      "product": "patty",
+      "batch": 4,
+      "rate": 3.6,
+      "inputs": {
+        "beef": 1
+      }
+    },
+    "pepperoni": {
+      "label": "Cure pepperoni",
+      "station": "kitchen",
+      "product": "pepperoni",
+      "batch": 8,
+      "rate": 7.2,
+      "inputs": {
+        "pork": 1
+      }
+    },
+    "picture_frame": {
+      "label": "Frame a picture",
+      "station": "carpentry_bench",
+      "product": "picture_frame",
+      "batch": 1,
+      "rate": 0.45,
+      "inputs": {
+        "glass": 1,
+        "nails": 2,
+        "plank": 3
+      }
+    },
+    "plank": {
+      "label": "Saw planks",
+      "station": "sawmill",
+      "product": "plank",
+      "batch": 4,
+      "rate": 3.2,
+      "inputs": {
+        "wood": 1
+      }
+    },
+    "plant": {
+      "label": "Pot a plant",
+      "station": "carpentry_bench",
+      "product": "plant",
+      "batch": 1,
+      "rate": 0.35,
+      "inputs": {
+        "concrete": 1,
+        "plank": 2,
+        "tree_sapling": 2
+      }
+    },
+    "planter": {
+      "label": "Build a planter box",
+      "station": "carpentry_bench",
+      "product": "planter",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "concrete": 2,
+        "plank": 6,
+        "tree_sapling": 2
+      }
+    },
+    "plastic_part": {
+      "label": "Mould plastic parts",
+      "station": "manufacturing_press",
+      "product": "plastic_part",
+      "batch": 2,
+      "rate": 1,
+      "inputs": {
+        "plastic_pellet": 3
+      }
+    },
+    "plastic_pellet": {
+      "label": "Polymerise pellets",
+      "station": "chemical_plant",
+      "product": "plastic_pellet",
+      "batch": 8,
+      "rate": 3.2,
+      "inputs": {
+        "naphtha": 2
+      }
+    },
+    "plastic_sheet": {
+      "label": "Extrude plastic sheet",
+      "station": "manufacturing_press",
+      "product": "plastic_sheet",
+      "batch": 2,
+      "rate": 0.8,
+      "inputs": {
+        "plastic_pellet": 5
+      }
+    },
+    "playing_card_art": {
+      "label": "Mount a playing card easel",
+      "station": "carpentry_bench",
+      "product": "playing_card_art",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "hardwood": 2,
+        "paper": 4,
+        "plank": 6,
+        "varnish": 1
+      }
+    },
+    "playing_cards": {
+      "label": "Print playing cards",
+      "station": "manufacturing_press",
+      "product": "playing_cards",
+      "batch": 2,
+      "rate": 1.2,
+      "inputs": {
+        "ink": 1,
+        "linen": 1,
+        "paper": 4,
+        "plastic_sheet": 1
+      }
+    },
+    "poker_table": {
+      "label": "Build a poker table",
+      "station": "gaming_workshop",
+      "product": "poker_table",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "casino_chips": 8,
+        "felt": 2,
+        "gaming_table_frame": 1,
+        "leather": 6,
+        "playing_cards": 6
+      }
+    },
+    "polished_concrete": {
+      "label": "Seal polished concrete",
+      "station": "stonecutter",
+      "product": "polished_concrete",
+      "batch": 5,
+      "rate": 2.5,
+      "inputs": {
+        "concrete": 2
+      }
+    },
+    "polysilicon": {
+      "label": "Refine polysilicon",
+      "station": "chemical_plant",
+      "product": "polysilicon",
+      "batch": 1,
+      "rate": 0.35,
+      "inputs": {
+        "quartz": 6
+      }
+    },
+    "portable_ac": {
+      "label": "Build a portable AC",
+      "station": "electronics_bench",
+      "product": "portable_ac",
+      "batch": 1,
+      "rate": 0.035,
+      "inputs": {
+        "circuit_board": 1,
+        "copper_wire": 4,
+        "machine_parts": 1,
+        "plastic_part": 3
+      }
+    },
+    "potted_palm": {
+      "label": "Pot a palm",
+      "station": "carpentry_bench",
+      "product": "potted_palm",
+      "batch": 1,
+      "rate": 0.14,
+      "inputs": {
+        "brick": 4,
+        "concrete": 2,
+        "tree_sapling": 3
+      }
+    },
+    "propane": {
+      "label": "Crack propane",
+      "station": "oil_refinery",
+      "product": "propane",
+      "batch": 8,
+      "rate": 2.4,
+      "inputs": {
+        "crude_oil": 4
+      }
+    },
+    "propeller": {
+      "label": "Cast a propeller",
+      "station": "foundry",
+      "product": "propeller",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "copper_bar": 12,
+        "iron_bar": 4,
+        "machine_parts": 2
+      }
+    },
+    "psu": {
+      "label": "Build a power supply",
+      "station": "electronics_bench",
+      "product": "psu",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "copper_wire": 6,
+        "plastic_part": 1,
+        "steel_sheet": 2,
+        "wire": 4
+      }
+    },
+    "rack": {
+      "label": "Build a storage rack",
+      "station": "metal_shop",
+      "product": "rack",
+      "batch": 1,
+      "rate": 0.09,
+      "inputs": {
+        "steel_sheet": 7,
+        "wire": 8
+      }
+    },
+    "ram": {
+      "label": "Package RAM sticks",
+      "station": "chip_fab",
+      "product": "ram",
+      "batch": 2,
+      "rate": 0.1,
+      "inputs": {
+        "circuit_board": 1,
+        "silicon_wafer": 2
+      }
+    },
+    "rebar": {
+      "label": "Draw rebar",
+      "station": "manufacturing_press",
+      "product": "rebar",
+      "batch": 4,
+      "rate": 2,
+      "inputs": {
+        "iron_bar": 1
+      }
+    },
+    "red_carpet_runner": {
+      "label": "Weave a red carpet runner",
+      "station": "loom",
+      "product": "red_carpet_runner",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "fabric": 4,
+        "wool": 4
+      }
+    },
+    "reel_assembly": {
+      "label": "Build a reel assembly",
+      "station": "manufacturing_press",
+      "product": "reel_assembly",
+      "batch": 1,
+      "rate": 0.4,
+      "inputs": {
+        "ink": 1,
+        "machine_parts": 1,
+        "steel_sheet": 1
+      }
+    },
+    "relish": {
+      "label": "Pickle relish",
+      "station": "kitchen",
+      "product": "relish",
+      "batch": 20,
+      "rate": 33.4,
+      "inputs": {
+        "cucumber": 10
+      }
+    },
+    "roof_tile": {
+      "label": "Fire roof tiles",
+      "station": "brick_kiln",
+      "product": "roof_tile",
+      "batch": 4,
+      "rate": 2,
+      "inputs": {
+        "concrete": 1,
+        "wood": 1
+      }
+    },
+    "rope_barrier": {
+      "label": "Build a rope barrier",
+      "station": "metal_shop",
+      "product": "rope_barrier",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "fabric": 1,
+        "steel_sheet": 3,
+        "wire": 3
+      }
+    },
+    "roulette_table": {
+      "label": "Build a roulette table",
+      "station": "gaming_workshop",
+      "product": "roulette_table",
+      "batch": 1,
+      "rate": 0.04,
+      "inputs": {
+        "casino_chips": 10,
+        "felt": 3,
+        "gaming_table_frame": 1,
+        "leather": 2,
+        "roulette_wheel": 1
+      }
+    },
+    "roulette_wheel": {
+      "label": "Turn a roulette wheel",
+      "station": "gaming_workshop",
+      "product": "roulette_wheel",
+      "batch": 1,
+      "rate": 0.1,
+      "inputs": {
+        "machine_parts": 2,
+        "mahogany": 4,
+        "steel_sheet": 2,
+        "varnish": 1
+      }
+    },
+    "rubber": {
+      "label": "Vulcanize rubber",
+      "station": "vulcanizer",
+      "product": "rubber",
+      "batch": 2,
+      "rate": 0.5,
+      "inputs": {
+        "latex": 4,
+        "quartz": 1
+      }
+    },
+    "rug": {
+      "label": "Weave a rug",
+      "station": "carpentry_bench",
+      "product": "rug",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "fabric": 6,
+        "plank": 2
+      }
+    },
+    "salsa": {
+      "label": "Cook salsa",
+      "station": "kitchen",
+      "product": "salsa",
+      "batch": 25,
+      "rate": 46.25,
+      "inputs": {
+        "onions": 5,
+        "tomato": 8
+      }
+    },
+    "scarf": {
+      "label": "Knit a scarf",
+      "station": "loom",
+      "product": "scarf",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "wool": 3
+      }
+    },
+    "screen": {
+      "label": "Assemble a monitor",
+      "station": "electronics_bench",
+      "product": "screen",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "circuit_board": 2,
+        "glass": 8,
+        "plastic_sheet": 2,
+        "steel_sheet": 2
+      }
+    },
+    "seismic_streamer": {
+      "label": "Build a seismic streamer",
+      "station": "metal_shop",
+      "product": "seismic_streamer",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "copper_wire": 40,
+        "machine_parts": 4,
+        "plastic_sheet": 10,
+        "steel_cable": 20
+      }
+    },
+    "self_checkout": {
+      "label": "Build a self-checkout kiosk",
+      "station": "electronics_bench",
+      "product": "self_checkout",
+      "batch": 1,
+      "rate": 0.022,
+      "inputs": {
+        "glass": 3,
+        "machine_parts": 7,
+        "plastic_part": 4,
+        "steel_sheet": 10,
+        "wire": 24
+      }
+    },
+    "shelving_unit": {
+      "label": "Build a shelving unit",
+      "station": "metal_shop",
+      "product": "shelving_unit",
+      "batch": 1,
+      "rate": 0.055,
+      "inputs": {
+        "steel_sheet": 13,
+        "wire": 10
+      }
+    },
+    "shipping_container": {
+      "label": "Build a shipping container",
+      "station": "metal_shop",
+      "product": "shipping_container",
+      "batch": 1,
+      "rate": 0.009,
+      "inputs": {
+        "steel_sheet": 85,
+        "wire": 40
+      }
+    },
+    "shop_bench": {
+      "label": "Build a shop bench",
+      "station": "carpentry_bench",
+      "product": "shop_bench",
+      "batch": 1,
+      "rate": 0.25,
+      "inputs": {
+        "nails": 14,
+        "plank": 20
+      }
+    },
+    "shop_freezer": {
+      "label": "Build a shop freezer",
+      "station": "electronics_bench",
+      "product": "shop_freezer",
+      "batch": 1,
+      "rate": 0.057,
+      "inputs": {
+        "glass": 8,
+        "machine_parts": 2,
+        "plastic_sheet": 2,
+        "steel_sheet": 14,
+        "wire": 12
+      }
+    },
+    "shop_register": {
+      "label": "Build a cash register",
+      "station": "electronics_bench",
+      "product": "shop_register",
+      "batch": 1,
+      "rate": 0.027,
+      "inputs": {
+        "machine_parts": 6,
+        "plastic_part": 3,
+        "steel_sheet": 8,
+        "wire": 20
+      }
+    },
+    "shop_shelf": {
+      "label": "Build a shop shelf",
+      "station": "metal_shop",
+      "product": "shop_shelf",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "plank": 6,
+        "steel_sheet": 12,
+        "wire": 12
+      }
+    },
+    "silicon_wafer": {
+      "label": "Pull silicon wafers",
+      "station": "chip_fab",
+      "product": "silicon_wafer",
+      "batch": 3,
+      "rate": 0.6,
+      "inputs": {
+        "polysilicon": 2
+      }
+    },
+    "skylight": {
+      "label": "Frame a skylight",
+      "station": "glazing_line",
+      "product": "skylight",
+      "batch": 1,
+      "rate": 0.4,
+      "inputs": {
+        "glass": 4,
+        "steel_sheet": 2
+      }
+    },
+    "slippers": {
+      "label": "Weave slippers",
+      "station": "loom",
+      "product": "slippers",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "fabric": 3
+      }
+    },
+    "slot_cabinet": {
+      "label": "Fold a slot cabinet",
+      "station": "metal_shop",
+      "product": "slot_cabinet",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "glass": 2,
+        "steel_sheet": 6
+      }
+    },
+    "slot_classic": {
+      "label": "Assemble a classic slot",
+      "station": "gaming_workshop",
+      "product": "slot_classic",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "circuit_board": 1,
+        "copper_wire": 6,
+        "plastic_part": 2,
+        "reel_assembly": 3,
+        "slot_cabinet": 1,
+        "varnish": 1
+      }
+    },
+    "slot_jackpot": {
+      "label": "Assemble a jackpot slot",
+      "station": "gaming_workshop",
+      "product": "slot_jackpot",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "circuit_board": 2,
+        "copper_wire": 10,
+        "gold_leaf": 4,
+        "microchip": 2,
+        "neon_sign": 1,
+        "plastic_part": 2,
+        "reel_assembly": 3,
+        "screen": 1,
+        "slot_cabinet": 1
+      }
+    },
+    "slot_video": {
+      "label": "Assemble a video slot",
+      "station": "gaming_workshop",
+      "product": "slot_video",
+      "batch": 1,
+      "rate": 0.04,
+      "inputs": {
+        "circuit_board": 2,
+        "copper_wire": 8,
+        "microchip": 2,
+        "plastic_part": 2,
+        "screen": 1,
+        "slot_cabinet": 1,
+        "varnish": 1
+      }
+    },
+    "sofa": {
+      "label": "Build a sofa",
+      "station": "carpentry_bench",
+      "product": "sofa",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "fabric": 10,
+        "nails": 15,
+        "plank": 20
+      }
+    },
+    "sonar_array": {
+      "label": "Build a sonar array",
+      "station": "electronics_bench",
+      "product": "sonar_array",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "circuit_board": 4,
+        "copper_wire": 20,
+        "plastic_part": 4,
+        "steel_sheet": 6
+      }
+    },
+    "soy": {
+      "label": "Brew soy sauce",
+      "station": "kitchen",
+      "product": "soy",
+      "batch": 30,
+      "rate": 50.1,
+      "inputs": {
+        "soybean": 6
+      }
+    },
+    "space_heater": {
+      "label": "Build a space heater",
+      "station": "metal_shop",
+      "product": "space_heater",
+      "batch": 1,
+      "rate": 0.025,
+      "inputs": {
+        "circuit_board": 1,
+        "copper_wire": 6,
+        "steel_sheet": 8,
+        "wire": 6
+      }
+    },
+    "stage_platform": {
+      "label": "Build a stage platform",
+      "station": "carpentry_bench",
+      "product": "stage_platform",
+      "batch": 1,
+      "rate": 0.045,
+      "inputs": {
+        "fabric": 6,
+        "hardwood": 6,
+        "nails": 20,
+        "plank": 30
+      }
+    },
+    "stanchion": {
+      "label": "Build a queue stanchion",
+      "station": "metal_shop",
+      "product": "stanchion",
+      "batch": 1,
+      "rate": 0.25,
+      "inputs": {
+        "steel_sheet": 2,
+        "wire": 2
+      }
+    },
+    "station_fryer": {
+      "label": "Fabricate a fryer station",
+      "station": "metal_shop",
+      "product": "station_fryer",
+      "batch": 1,
+      "rate": 0.018,
+      "inputs": {
+        "machine_parts": 1,
+        "steel_sheet": 24,
+        "wire": 12
+      }
+    },
+    "station_grill": {
+      "label": "Fabricate a grill station",
+      "station": "metal_shop",
+      "product": "station_grill",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "iron_bar": 2,
+        "steel_sheet": 22,
+        "wire": 10
+      }
+    },
+    "station_oven": {
+      "label": "Fabricate an oven station",
+      "station": "metal_shop",
+      "product": "station_oven",
+      "batch": 1,
+      "rate": 0.018,
+      "inputs": {
+        "glass": 8,
+        "machine_parts": 1,
+        "steel_sheet": 26,
+        "wire": 10
+      }
+    },
+    "station_pan": {
+      "label": "Fabricate a pan station",
+      "station": "metal_shop",
+      "product": "station_pan",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "steel_sheet": 17,
+        "wire": 6
+      }
+    },
+    "station_pot": {
+      "label": "Fabricate a pot station",
+      "station": "metal_shop",
+      "product": "station_pot",
+      "batch": 1,
+      "rate": 0.02,
+      "inputs": {
+        "steel_sheet": 18,
+        "wire": 8
+      }
+    },
+    "station_prep": {
+      "label": "Build a prep counter",
+      "station": "carpentry_bench",
+      "product": "station_prep",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "nails": 20,
+        "plank": 30,
+        "steel_sheet": 10
+      }
+    },
+    "steel_beam": {
+      "label": "Roll a steel beam",
+      "station": "steel_mill",
+      "product": "steel_beam",
+      "batch": 1,
+      "rate": 0.4,
+      "inputs": {
+        "iron_bar": 3
+      }
+    },
+    "steel_cable": {
+      "label": "Lay steel cable",
+      "station": "steel_mill",
+      "product": "steel_cable",
+      "batch": 2,
+      "rate": 1,
+      "inputs": {
+        "iron_bar": 1,
+        "wire": 4
+      }
+    },
+    "steel_plate": {
+      "label": "Roll steel plate",
+      "station": "steel_mill",
+      "product": "steel_plate",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "iron_bar": 1,
+        "steel_sheet": 4
+      }
+    },
+    "steel_sheet": {
+      "label": "Roll steel sheet",
+      "station": "manufacturing_press",
+      "product": "steel_sheet",
+      "batch": 2,
+      "rate": 1,
+      "inputs": {
+        "iron_bar": 1
+      }
+    },
+    "stockroom_rack": {
+      "label": "Build a stockroom rack",
+      "station": "metal_shop",
+      "product": "stockroom_rack",
+      "batch": 1,
+      "rate": 0.032,
+      "inputs": {
+        "steel_sheet": 22,
+        "wire": 18
+      }
+    },
+    "stool": {
+      "label": "Build a stool",
+      "station": "carpentry_bench",
+      "product": "stool",
+      "batch": 1,
+      "rate": 0.6,
+      "inputs": {
+        "nails": 8,
+        "plank": 5
+      }
+    },
+    "storage_locker": {
+      "label": "Build storage lockers",
+      "station": "metal_shop",
+      "product": "storage_locker",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "steel_sheet": 11,
+        "wire": 9
+      }
+    },
+    "survey_array": {
+      "label": "Build a survey array",
+      "station": "electronics_bench",
+      "product": "survey_array",
+      "batch": 1,
+      "rate": 0.004,
+      "inputs": {
+        "battery": 2,
+        "circuit_board": 10,
+        "microchip": 20,
+        "steel_sheet": 20
+      }
+    },
+    "survey_tower": {
+      "label": "Build a survey tower",
+      "station": "electronics_bench",
+      "product": "survey_tower",
+      "batch": 1,
+      "rate": 0.006,
+      "inputs": {
+        "copper_wire": 40,
+        "glass": 10,
+        "machine_parts": 6,
+        "steel_sheet": 30
+      }
+    },
+    "survey_tripod": {
+      "label": "Build a survey tripod",
+      "station": "machine_shop",
+      "product": "survey_tripod",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "glass": 3,
+        "iron_bar": 6,
+        "plank": 15
+      }
+    },
+    "sweater": {
+      "label": "Knit a sweater",
+      "station": "loom",
+      "product": "sweater",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "fabric": 6
+      }
+    },
+    "table": {
+      "label": "Build a table",
+      "station": "carpentry_bench",
+      "product": "table",
+      "batch": 1,
+      "rate": 0.18,
+      "inputs": {
+        "nails": 24,
+        "plank": 18
+      }
+    },
+    "table_long": {
+      "label": "Build a long table",
+      "station": "carpentry_bench",
+      "product": "table_long",
+      "batch": 1,
+      "rate": 0.05,
+      "inputs": {
+        "nails": 44,
+        "plank": 40
+      }
+    },
+    "takeout_counter": {
+      "label": "Fabricate a takeout counter",
+      "station": "metal_shop",
+      "product": "takeout_counter",
+      "batch": 1,
+      "rate": 0.018,
+      "inputs": {
+        "glass": 4,
+        "plank": 6,
+        "steel_sheet": 24,
+        "wire": 12
+      }
+    },
+    "tartar": {
+      "label": "Whisk tartar sauce",
+      "station": "kitchen",
+      "product": "tartar",
+      "batch": 20,
+      "rate": 33.4,
+      "inputs": {
+        "cucumber": 6,
+        "vinegar": 5
+      }
+    },
+    "tire": {
+      "label": "Mold a tire",
+      "station": "vulcanizer",
+      "product": "tire",
+      "batch": 1,
+      "rate": 0.15,
+      "inputs": {
+        "fabric": 1,
+        "rubber": 3,
+        "wire": 4
+      }
+    },
+    "tortilla": {
+      "label": "Press tortillas",
+      "station": "kitchen",
+      "product": "tortilla",
+      "batch": 12,
+      "rate": 14.76,
+      "inputs": {
+        "dough": 5
+      }
+    },
+    "toy_blocks": {
+      "label": "Saw toy blocks",
+      "station": "sawmill",
+      "product": "toy_blocks",
+      "batch": 1,
+      "rate": 0.45,
+      "inputs": {
+        "plastic_pellet": 2,
+        "wood": 1
+      }
+    },
+    "tracks": {
+      "label": "Cast crawler tracks",
+      "station": "foundry",
+      "product": "tracks",
+      "batch": 1,
+      "rate": 0.1,
+      "inputs": {
+        "iron_bar": 4,
+        "steel_sheet": 8
+      }
+    },
+    "trough": {
+      "label": "Build a feed trough",
+      "station": "carpentry_bench",
+      "product": "trough",
+      "batch": 1,
+      "rate": 0.25,
+      "inputs": {
+        "nails": 10,
+        "plank": 12
+      }
+    },
+    "tv": {
+      "label": "Build a TV console",
+      "station": "carpentry_bench",
+      "product": "tv",
+      "batch": 1,
+      "rate": 0.03,
+      "inputs": {
+        "nails": 10,
+        "plank": 12,
+        "plastic_part": 4
+      }
+    },
+    "unique_display": {
+      "label": "Build a display platform",
+      "station": "carpentry_bench",
+      "product": "unique_display",
+      "batch": 1,
+      "rate": 0.025,
+      "inputs": {
+        "brass_trim": 4,
+        "copper_wire": 6,
+        "marble_tile": 6,
+        "museum_glass": 2
+      }
+    },
+    "v_bucket_wheel_excavator": {
+      "label": "Assemble a bucket-wheel excavator",
+      "station": "vehicle_assembly_platform",
+      "product": "bucket_wheel_excavator",
+      "batch": 1,
+      "rate": 0.0012,
+      "inputs": {
+        "battery": 4,
+        "computer": 1,
+        "diesel": 120,
+        "drill_head": 6,
+        "engine": 8,
+        "gear": 80,
+        "hydraulic_cylinder": 16,
+        "hydraulic_pump": 8,
+        "iron_bar": 300,
+        "machine_parts": 40,
+        "steel_sheet": 500,
+        "tracks": 6,
+        "vehicle_cab": 2
+      }
+    },
+    "v_drill_rig": {
+      "label": "Assemble a drill rig",
+      "station": "vehicle_assembly_platform",
+      "product": "drill_rig",
+      "batch": 1,
+      "rate": 0.006,
+      "inputs": {
+        "battery": 2,
+        "diesel": 20,
+        "drill_head": 2,
+        "engine": 2,
+        "hydraulic_cylinder": 4,
+        "hydraulic_pump": 2,
+        "machine_parts": 4,
+        "steel_sheet": 20,
+        "tracks": 2,
+        "vehicle_cab": 1
+      }
+    },
+    "v_haul_truck": {
+      "label": "Assemble a haul truck",
+      "station": "vehicle_assembly_platform",
+      "product": "haul_truck",
+      "batch": 1,
+      "rate": 0.0015,
+      "inputs": {
+        "battery": 2,
+        "diesel": 60,
+        "engine": 2,
+        "gear": 40,
+        "hydraulic_cylinder": 4,
+        "hydraulic_pump": 2,
+        "iron_bar": 180,
+        "machine_parts": 20,
+        "screen": 1,
+        "steel_sheet": 300,
+        "tire": 6,
+        "vehicle_cab": 1
+      }
+    },
+    "v_mining_barrow": {
+      "label": "Assemble a mining barrow",
+      "station": "vehicle_assembly_platform",
+      "product": "mining_barrow",
+      "batch": 1,
+      "rate": 0.04,
+      "inputs": {
+        "battery": 1,
+        "iron_bar": 2,
+        "steel_sheet": 1,
+        "tire": 1
+      }
+    },
+    "v_mining_excavator": {
+      "label": "Assemble a mining excavator",
+      "station": "vehicle_assembly_platform",
+      "product": "mining_excavator",
+      "batch": 1,
+      "rate": 0.003,
+      "inputs": {
+        "battery": 2,
+        "diesel": 40,
+        "drill_head": 1,
+        "engine": 2,
+        "hydraulic_cylinder": 6,
+        "hydraulic_pump": 3,
+        "iron_bar": 60,
+        "machine_parts": 12,
+        "screen": 1,
+        "steel_sheet": 200,
+        "tracks": 2,
+        "vehicle_cab": 1
+      }
+    },
+    "v_skid_steer": {
+      "label": "Assemble a skid-steer loader",
+      "station": "vehicle_assembly_platform",
+      "product": "skid_steer",
+      "batch": 1,
+      "rate": 0.012,
+      "inputs": {
+        "battery": 1,
+        "diesel": 10,
+        "engine": 1,
+        "hydraulic_cylinder": 2,
+        "hydraulic_pump": 1,
+        "steel_sheet": 6,
+        "tire": 4
+      }
+    },
+    "varnish": {
+      "label": "Cook varnish",
+      "station": "chemical_plant",
+      "product": "varnish",
+      "batch": 3,
+      "rate": 1.8,
+      "inputs": {
+        "latex": 1,
+        "linseed_oil": 2
+      }
+    },
+    "vase": {
+      "label": "Fire a vase",
+      "station": "furnace",
+      "product": "vase",
+      "batch": 1,
+      "rate": 0.3,
+      "inputs": {
+        "concrete": 3
+      }
+    },
+    "vehicle_cab": {
+      "label": "Glaze a vehicle cab",
+      "station": "metal_shop",
+      "product": "vehicle_cab",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "fabric": 2,
+        "glass": 4,
+        "plastic_part": 3,
+        "steel_sheet": 6
+      }
+    },
+    "velvet": {
+      "label": "Weave velvet",
+      "station": "loom",
+      "product": "velvet",
+      "batch": 2,
+      "rate": 0.8,
+      "inputs": {
+        "linseed_oil": 1,
+        "wool": 4
+      }
+    },
+    "velvet_curtain": {
+      "label": "Sew a velvet curtain",
+      "station": "loom",
+      "product": "velvet_curtain",
+      "batch": 1,
+      "rate": 0.06,
+      "inputs": {
+        "fabric": 10,
+        "steel_sheet": 1,
+        "wool": 6
+      }
+    },
+    "vinegar": {
+      "label": "Ferment vinegar",
+      "station": "kitchen",
+      "product": "vinegar",
+      "batch": 45,
+      "rate": 75.15,
+      "inputs": {
+        "wheat": 10
+      }
+    },
+    "wall_clock": {
+      "label": "Assemble a wall clock",
+      "station": "electronics_bench",
+      "product": "wall_clock",
+      "batch": 1,
+      "rate": 0.12,
+      "inputs": {
+        "glass": 2,
+        "machine_parts": 1,
+        "plastic_part": 1,
+        "steel_sheet": 1
+      }
+    },
+    "wall_sconce": {
+      "label": "Wire a wall sconce",
+      "station": "electronics_bench",
+      "product": "wall_sconce",
+      "batch": 1,
+      "rate": 0.2,
+      "inputs": {
+        "glass": 2,
+        "hardwood": 2,
+        "steel_sheet": 1,
+        "wire": 3
+      }
+    },
+    "wallpaper": {
+      "label": "Print wallpaper",
+      "station": "manufacturing_press",
+      "product": "wallpaper",
+      "batch": 3,
+      "rate": 1.2,
+      "inputs": {
+        "paper": 4
+      }
+    },
+    "wardrobe": {
+      "label": "Build a wardrobe",
+      "station": "carpentry_bench",
+      "product": "wardrobe",
+      "batch": 1,
+      "rate": 0.09,
+      "inputs": {
+        "nails": 40,
+        "plank": 32
+      }
+    },
+    "wind_turbine": {
+      "label": "Build a wind turbine",
+      "station": "metal_shop",
+      "product": "wind_turbine",
+      "batch": 1,
+      "rate": 0.0088,
+      "inputs": {
+        "circuit_board": 10,
+        "concrete": 20,
+        "copper_wire": 40,
+        "gear": 60,
+        "hull_section": 2,
+        "machine_parts": 30,
+        "plastic_sheet": 60,
+        "steel_beam": 20,
+        "steel_plate": 60
+      }
+    },
+    "window_standard": {
+      "label": "Build a standard window",
+      "station": "carpentry_bench",
+      "product": "window_standard",
+      "batch": 1,
+      "rate": 0.27,
+      "inputs": {
+        "glass": 4,
+        "plank": 3
+      }
+    },
+    "window_tall": {
+      "label": "Build a tall window",
+      "station": "carpentry_bench",
+      "product": "window_tall",
+      "batch": 1,
+      "rate": 0.23,
+      "inputs": {
+        "glass": 6,
+        "plank": 4
+      }
+    },
+    "window_wide": {
+      "label": "Build a wide window",
+      "station": "carpentry_bench",
+      "product": "window_wide",
+      "batch": 1,
+      "rate": 0.19,
+      "inputs": {
+        "glass": 7,
+        "plank": 5
+      }
+    },
+    "wingback_armchair": {
+      "label": "Upholster a wingback armchair",
+      "station": "carpentry_bench",
+      "product": "wingback_armchair",
+      "batch": 1,
+      "rate": 0.07,
+      "inputs": {
+        "hardwood": 2,
+        "leather": 6,
+        "nails": 8,
+        "plank": 8
+      }
+    },
+    "wire": {
+      "label": "Draw wire",
+      "station": "manufacturing_press",
+      "product": "wire",
+      "batch": 12,
+      "rate": 6,
+      "inputs": {
+        "iron_bar": 1
+      }
+    },
+    "wood_shelf": {
+      "label": "Build a wooden shop shelf",
+      "station": "carpentry_bench",
+      "product": "wood_shelf",
+      "batch": 1,
+      "rate": 0.08,
+      "inputs": {
+        "nails": 26,
+        "plank": 36
+      }
+    },
+    "workbench": {
+      "label": "Build a workbench",
+      "station": "carpentry_bench",
+      "product": "workbench",
+      "batch": 1,
+      "rate": 0.028,
+      "inputs": {
+        "nails": 14,
+        "plank": 20,
+        "steel_sheet": 2
+      }
+    }
+  }
+}

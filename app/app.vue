@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { calculateDemandByProducer, calculateNetworkSummary, consolidateOutputNodes as mergeDuplicateOutputs, machinesForDemand } from './utils/production-solver.js'
 type Ingredient = { item_id: string; name: string; quantity: number }
 type Recipe = { id: string; label: string; station: string; batch: number; rate: number; product_id: string; product: string; ingredients: Ingredient[] }
 type MachineNode = { id: string; recipeId: string; x: number; y: number; machines: number }
@@ -7,13 +8,20 @@ type PlannerView = 'network' | 'tree' | 'items' | 'buildings' | 'targets' | 'pri
 type TargetSection = 'outputs' | 'inputs' | 'options'
 type ProductionTarget = { id: string; itemId: string; recipeId: string; rate: number }
 type ImportedInput = { id: string; itemId: string; rate: number }
-type TreeRow = { key: string; depth: number; kind: 'product' | 'ingredient'; name: string; detail: string; machines?: number; external?: boolean; nodeId?: string }
+type PlanSnapshot = { nodes: MachineNode[]; connections: Record<string, string>; productionTargets: ProductionTarget[]; importedInputs: ImportedInput[]; autoArrangeGenerated: boolean; preserveExistingPlan: boolean }
+type TreeRow = { key: string; depth: number; kind: 'product' | 'ingredient'; name: string; detail: string; machines?: number; external?: boolean; nodeId?: string; hasChildren?: boolean; collapsed?: boolean }
 type ItemBalance = { id: string; name: string; produced: number; required: number; connected: number; external: number; surplus: number }
 type BuildingSummary = { id: string; name: string; recipeCount: number; machines: number; products: string[] }
+type MarketQuote = { symbol: string; name: string; price: number; units24h: number }
+type MarketData = { asOf: string; quotes: MarketQuote[]; source: string }
 type RecipeGroup = { id: string; name: string; recipes: Recipe[] }
 type PortPoint = { x: number; y: number }
 const recipes = ref<Recipe[]>([])
+const recipeById = computed(() => new Map(recipes.value.map(recipe => [recipe.id, recipe])))
 const metadata = ref<{ recipeCount: number; itemCount: number; retrievedAt: string } | null>(null)
+const marketData = ref<MarketData | null>(null)
+const marketLoading = ref(false)
+const marketError = ref('')
 const search = ref('')
 const selectedCategory = ref('all')
 const viewSearch = ref('')
@@ -27,20 +35,28 @@ const autoArrangeGenerated = ref(true)
 const preserveExistingPlan = ref(true)
 const nodes = ref<MachineNode[]>([])
 const selectedNodeIds = ref<string[]>([])
+const collapsedTreeNodeIds = ref<string[]>([])
 const connections = ref<Record<string, string>>({})
 const activeInput = ref('')
+const importPlanInput = ref<HTMLInputElement | null>(null)
+const undoHistory = ref<PlanSnapshot[]>([])
+const redoHistory = ref<PlanSnapshot[]>([])
 const canvas = ref<HTMLElement | null>(null)
 const canvasBoard = ref<HTMLElement | null>(null)
 const nodeElements = new Map<string, HTMLElement>()
 const portPositions = ref<Record<string, PortPoint>>({})
 const portElements = new Map<string, HTMLElement>()
-const movingNodes = ref<{ nodes: { node: MachineNode; x: number; y: number }[]; pointerId: number; clientX: number; clientY: number } | null>(null)
+const portOffsets = new Map<string, PortPoint>()
+const movingNodes = ref<{ nodes: { node: MachineNode; x: number; y: number }[]; pointerId: number; clientX: number; clientY: number; historyRecorded: boolean } | null>(null)
 const selecting = ref<{ pointerId: number; startX: number; startY: number; endX: number; endY: number; additive: boolean } | null>(null)
 const draggedRecipe = ref<Recipe | null>(null)
 const dragPreview = ref<{ x: number; y: number } | null>(null)
 const panning = ref<{ pointerId: number; clientX: number; clientY: number; scrollLeft: number; scrollTop: number } | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let moveFrame = 0
+let portMeasureFrame = 0
+let lastMarketFetch = 0
+let marketRequest: Promise<void> | undefined
 const pending = ref(true)
 const error = ref('')
 const zoom = ref(100)
@@ -84,9 +100,29 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', searchShortcut)
   if (saveTimer) clearTimeout(saveTimer)
   if (moveFrame) cancelAnimationFrame(moveFrame)
+  if (portMeasureFrame) cancelAnimationFrame(portMeasureFrame)
 })
-onUpdated(updatePortPositions)
+onUpdated(() => {
+  if (portMeasureFrame) return
+  portMeasureFrame = requestAnimationFrame(() => {
+    portMeasureFrame = 0
+    updatePortPositions()
+  })
+})
 function searchShortcut(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null
+  const editingText = !!target?.closest('input,textarea,select,[contenteditable="true"]')
+  if ((event.ctrlKey || event.metaKey) && !editingText && event.key.toLowerCase() === 'z') {
+    event.preventDefault()
+    if (event.shiftKey) redoPlan()
+    else undoPlan()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && !editingText && event.key.toLowerCase() === 'y') {
+    event.preventDefault()
+    redoPlan()
+    return
+  }
   if (event.key === '/' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
     event.preventDefault()
     document.querySelector<HTMLInputElement>('.search-box input')?.focus()
@@ -101,7 +137,126 @@ watch([nodes, connections, productionTargets, importedInputs, autoArrangeGenerat
 }, { deep: true })
 watch(activeView, view => {
   if (view === 'network') void nextTick(centerCanvas)
+  if (view === 'prices') void loadMarketPrices()
 })
+
+function snapshotPlan(): PlanSnapshot {
+  return JSON.parse(JSON.stringify({
+    nodes: nodes.value,
+    connections: connections.value,
+    productionTargets: productionTargets.value,
+    importedInputs: importedInputs.value,
+    autoArrangeGenerated: autoArrangeGenerated.value,
+    preserveExistingPlan: preserveExistingPlan.value
+  })) as PlanSnapshot
+}
+function recordPlanChange() {
+  undoHistory.value.push(snapshotPlan())
+  if (undoHistory.value.length > 50) undoHistory.value.shift()
+  redoHistory.value = []
+}
+function restorePlan(snapshot: PlanSnapshot) {
+  const restored = JSON.parse(JSON.stringify(snapshot)) as PlanSnapshot
+  nodes.value = restored.nodes
+  connections.value = restored.connections
+  productionTargets.value = restored.productionTargets
+  importedInputs.value = restored.importedInputs
+  autoArrangeGenerated.value = restored.autoArrangeGenerated
+  preserveExistingPlan.value = restored.preserveExistingPlan
+}
+function undoPlan() {
+  const previous = undoHistory.value.pop()
+  if (!previous) return
+  redoHistory.value.push(snapshotPlan())
+  restorePlan(previous)
+}
+function redoPlan() {
+  const next = redoHistory.value.pop()
+  if (!next) return
+  undoHistory.value.push(snapshotPlan())
+  restorePlan(next)
+}
+function clearPlan() {
+  if (!nodes.value.length && !productionTargets.value.length && !importedInputs.value.length) return
+  if (!window.confirm('Clear this factory plan and its saved targets?')) return
+  recordPlanChange()
+  nodes.value = []
+  connections.value = {}
+  productionTargets.value = []
+  importedInputs.value = []
+  selectedNodeIds.value = []
+}
+function exportPlan() {
+  const file = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), plan: snapshotPlan() }, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(file)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `capitalrift-plan-${new Date().toISOString().slice(0, 10)}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+async function importPlanFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (file.size > 2_000_000) {
+    error.value = 'Plan files must be smaller than 2 MB.'
+    return
+  }
+  try {
+    const parsed = JSON.parse(await file.text())
+    const candidate = parsed.plan ?? parsed
+    if (!Array.isArray(candidate.nodes) || candidate.nodes.length > 5000 || !candidate.connections || typeof candidate.connections !== 'object') throw new Error('invalid')
+    const validNodes = candidate.nodes.every((node: unknown) => {
+      if (!node || typeof node !== 'object') return false
+      const value = node as Partial<MachineNode>
+      return typeof value.id === 'string' && typeof value.recipeId === 'string' && Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.machines) && (value.machines ?? 0) >= 1 && recipeById.value.has(value.recipeId)
+    })
+    if (!validNodes) throw new Error('invalid')
+    const nodeIds = new Set<string>(candidate.nodes.map((node: MachineNode) => node.id))
+    const cleanConnections = Object.fromEntries(Object.entries(candidate.connections).filter(([key, source]) => {
+      if (typeof source !== 'string' || !nodeIds.has(source)) return false
+      const consumerId = key.slice(0, key.lastIndexOf(':'))
+      return nodeIds.has(consumerId)
+    })) as Record<string, string>
+    recordPlanChange()
+    restorePlan({
+      nodes: candidate.nodes,
+      connections: cleanConnections,
+      productionTargets: Array.isArray(candidate.productionTargets) ? candidate.productionTargets.filter((target: ProductionTarget) => typeof target?.id === 'string' && typeof target.itemId === 'string' && Number.isFinite(target.rate)) : [],
+      importedInputs: Array.isArray(candidate.importedInputs) ? candidate.importedInputs.filter((item: ImportedInput) => typeof item?.id === 'string' && typeof item.itemId === 'string' && Number.isFinite(item.rate)) : [],
+      autoArrangeGenerated: typeof candidate.autoArrangeGenerated === 'boolean' ? candidate.autoArrangeGenerated : true,
+      preserveExistingPlan: typeof candidate.preserveExistingPlan === 'boolean' ? candidate.preserveExistingPlan : true
+    })
+    selectedNodeIds.value = []
+    arrangeNetwork()
+    activeView.value = 'network'
+    void nextTick(centerCanvas)
+    error.value = ''
+  } catch {
+    error.value = 'This file is not a valid CapitalRift factory plan.'
+  }
+}
+
+async function loadMarketPrices(force = false) {
+  if (marketRequest) return marketRequest
+  if (!force && marketData.value && Date.now() - lastMarketFetch < 60_000) return
+  marketLoading.value = true
+  marketError.value = ''
+  marketRequest = (async () => {
+    try {
+      marketData.value = await $fetch<MarketData>('/api/prices')
+      lastMarketFetch = Date.now()
+    } catch {
+      marketError.value = 'Live market quotes could not be loaded. Try again shortly.'
+    } finally {
+      marketLoading.value = false
+      marketRequest = undefined
+    }
+  })()
+  return marketRequest
+}
 
 const filteredRecipes = computed(() => {
   const needle = search.value.trim().toLowerCase()
@@ -136,6 +291,38 @@ const productOptions = computed(() => {
   for (const recipe of recipes.value) items.set(recipe.product_id, recipe.product)
   return [...items].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
 })
+const recipesByProduct = computed(() => {
+  const grouped = new Map<string, Recipe[]>()
+  for (const recipe of recipes.value) {
+    if (recipe.rate <= 0) continue
+    const matches = grouped.get(recipe.product_id) ?? []
+    matches.push(recipe)
+    grouped.set(recipe.product_id, matches)
+  }
+  for (const matches of grouped.values()) matches.sort((a, b) => a.station.localeCompare(b.station) || a.label.localeCompare(b.label))
+  return grouped
+})
+const nodesById = computed(() => new Map(nodes.value.map(node => [node.id, node])))
+const consumersByProducer = computed(() => {
+  const grouped = new Map<string, string[]>()
+  for (const [key, producerId] of Object.entries(connections.value)) {
+    const consumers = grouped.get(producerId) ?? []
+    consumers.push(key.slice(0, key.lastIndexOf(':')))
+    grouped.set(producerId, consumers)
+  }
+  return grouped
+})
+const nodesByProduct = computed(() => {
+  const grouped = new Map<string, MachineNode[]>()
+  for (const node of nodes.value) {
+    const productId = recipeById.value.get(node.recipeId)?.product_id
+    if (!productId) continue
+    const matches = grouped.get(productId) ?? []
+    matches.push(node)
+    grouped.set(productId, matches)
+  }
+  return grouped
+})
 const materialOptions = computed(() => {
   const items = new Map<string, string>()
   for (const recipe of recipes.value) {
@@ -144,11 +331,12 @@ const materialOptions = computed(() => {
   }
   return [...items].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
 })
-function recipeFor(node: MachineNode) { return recipes.value.find(recipe => recipe.id === node.recipeId) }
+function recipeFor(node: MachineNode) { return recipeById.value.get(node.recipeId) }
 function inputKey(nodeId: string, itemId: string) { return `${nodeId}:${itemId}` }
 function isImportedItem(itemId: string) { return importedInputs.value.some(input => input.itemId === itemId) }
-function recipesForItem(itemId: string) { return recipes.value.filter(recipe => recipe.product_id === itemId && recipe.rate > 0).sort((a, b) => a.station.localeCompare(b.station) || a.label.localeCompare(b.label)) }
+function recipesForItem(itemId: string) { return recipesByProduct.value.get(itemId) ?? [] }
 function addProductionTarget() {
+  recordPlanChange()
   productionTargets.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, itemId: '', recipeId: '', rate: 1 })
 }
 function buildTargetFromSearch(target: ProductionTarget, name: string) {
@@ -158,24 +346,58 @@ function buildTargetFromSearch(target: ProductionTarget, name: string) {
 function setTargetItemByName(target: ProductionTarget, name: string) {
   const item = productOptions.value.find(candidate => candidate.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase())
   const recipe = item && recipesForItem(item.id)[0]
-  target.itemId = item?.id ?? ''
+  const itemId = item?.id ?? ''
+  if (target.itemId !== itemId) recordPlanChange()
+  target.itemId = itemId
   target.recipeId = recipe?.id ?? ''
 }
 function addImportedInput() {
   const item = materialOptions.value.find(candidate => !importedInputs.value.some(input => input.itemId === candidate.id))
-  if (item) importedInputs.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, itemId: item.id, rate: 1 })
+  if (item) {
+    recordPlanChange()
+    importedInputs.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, itemId: item.id, rate: 1 })
+  }
 }
 function setImportedItemById(inputId: string, itemId: string) {
   if (importedInputs.value.some(input => input.id !== inputId && input.itemId === itemId)) return
   const input = importedInputs.value.find(candidate => candidate.id === inputId)
-  if (input) input.itemId = itemId
+  if (input && input.itemId !== itemId) {
+    recordPlanChange()
+    input.itemId = itemId
+  }
 }
 function setImportedRate(inputId: string, value: string | number) {
   const input = importedInputs.value.find(candidate => candidate.id === inputId)
-  if (input) input.rate = Math.max(0, Number(value) || 0)
+  const rate = Math.max(0, Number(value) || 0)
+  if (input && input.rate !== rate) {
+    recordPlanChange()
+    input.rate = rate
+  }
+}
+function removeProductionTarget(id: string) {
+  if (!productionTargets.value.some(target => target.id === id)) return
+  recordPlanChange()
+  productionTargets.value = productionTargets.value.filter(target => target.id !== id)
+}
+function removeImportedInput(id: string) {
+  if (!importedInputs.value.some(input => input.id === id)) return
+  recordPlanChange()
+  importedInputs.value = importedInputs.value.filter(input => input.id !== id)
+}
+function configureImportForItem(itemId: string) {
+  if (!importedInputs.value.some(input => input.itemId === itemId)) {
+    recordPlanChange()
+    importedInputs.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, itemId, rate: 0 })
+  }
+  activeTargetSection.value = 'inputs'
+  activeView.value = 'targets'
+}
+function reviewItemBalance(name: string) {
+  viewSearch.value = name
+  activeView.value = 'items'
 }
 function providersFor(consumer: MachineNode, itemId: string) {
-  return nodes.value.filter(node => node.id !== consumer.id && recipeFor(node)?.product_id === itemId && !wouldCreateCycle(consumer.id, node.id))
+  return (nodesByProduct.value.get(itemId) ?? []).filter(node => node.id !== consumer.id && !wouldCreateCycle(consumer.id, node.id))
 }
 function wouldCreateCycle(consumerId: string, providerId: string) {
   const pending = [consumerId]
@@ -185,19 +407,18 @@ function wouldCreateCycle(consumerId: string, providerId: string) {
     if (current === providerId) return true
     if (visited.has(current)) continue
     visited.add(current)
-    for (const [key, sourceId] of Object.entries(connections.value)) {
-      if (sourceId === current) pending.push(key.slice(0, key.lastIndexOf(':')))
-    }
+    pending.push(...(consumersByProducer.value.get(current) ?? []))
   }
   return false
 }
 function addRecipe(recipe: Recipe, position?: { x: number; y: number }) {
-  const existing = nodes.value.find(node => recipeFor(node)?.product_id === recipe.product_id)
+  const existing = nodesByProduct.value.get(recipe.product_id)?.[0]
   if (existing) {
     selectedNodeIds.value = [existing.id]
     void nextTick(centerCanvas)
     return
   }
+  recordPlanChange()
   const index = nodes.value.length
   const node = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -246,12 +467,13 @@ function estimateBranchHeight(recipe: Recipe, path = new Set<string>()): number 
   if (path.has(recipe.product_id)) return ownHeight
   const nextPath = new Set(path).add(recipe.product_id)
   const children = recipe.ingredients
-    .map(ingredient => recipes.value.find(candidate => candidate.product_id === ingredient.item_id && candidate.rate > 0))
+    .map(ingredient => recipesForItem(ingredient.item_id)[0])
     .filter((candidate): candidate is Recipe => !!candidate)
   const childrenHeight = children.reduce((sum, child) => sum + estimateBranchHeight(child, nextPath), 0) + Math.max(0, children.length - 1) * TREE_GAP
   return Math.max(ownHeight, childrenHeight)
 }
 function removeNode(nodeId: string) {
+  recordPlanChange()
   nodes.value = nodes.value.filter(node => node.id !== nodeId)
   selectedNodeIds.value = selectedNodeIds.value.filter(id => id !== nodeId)
   for (const [key, value] of Object.entries(connections.value)) {
@@ -261,19 +483,41 @@ function removeNode(nodeId: string) {
 function canExpandChain(node: MachineNode) {
   return recipeFor(node)?.ingredients.some(ingredient => {
     const providerId = connections.value[inputKey(node.id, ingredient.item_id)]
-    const provider = nodes.value.find(candidate => candidate.id === providerId)
+    const provider = nodesById.value.get(providerId)
     const providerRecipe = provider && recipeFor(provider)
     if (providerRecipe?.product_id === ingredient.item_id && providerRecipe.rate > 0) return false
     return !isImportedItem(ingredient.item_id) && recipesForItem(ingredient.item_id).length > 0
   }) ?? false
 }
 function canExpandNodeId(nodeId: string) {
-  const node = nodes.value.find(candidate => candidate.id === nodeId)
+  const node = nodesById.value.get(nodeId)
   return node ? canExpandChain(node) : false
 }
 function expandTreeNode(nodeId: string) {
-  const node = nodes.value.find(candidate => candidate.id === nodeId)
+  const node = nodesById.value.get(nodeId)
   if (node) expandChain(node)
+}
+function toggleTreeNode(nodeId: string) {
+  collapsedTreeNodeIds.value = collapsedTreeNodeIds.value.includes(nodeId)
+    ? collapsedTreeNodeIds.value.filter(id => id !== nodeId)
+    : [...collapsedTreeNodeIds.value, nodeId]
+}
+function focusNode(nodeId: string) {
+  if (!nodesById.value.has(nodeId)) return
+  selectedNodeIds.value = [nodeId]
+  activeView.value = 'network'
+  void nextTick(() => {
+    const viewport = canvas.value
+    const element = nodeElements.get(nodeId)
+    if (!viewport || !element) return
+    const viewRect = viewport.getBoundingClientRect()
+    const nodeRect = element.getBoundingClientRect()
+    viewport.scrollTo({
+      left: viewport.scrollLeft + nodeRect.left + nodeRect.width / 2 - viewRect.left - viewRect.width / 2,
+      top: viewport.scrollTop + nodeRect.top + nodeRect.height / 2 - viewRect.top - viewRect.height / 2,
+      behavior: 'smooth'
+    })
+  })
 }
 function setPortElement(key: string, element: unknown) {
   if (import.meta.client && element instanceof HTMLElement) portElements.set(key, element)
@@ -286,18 +530,30 @@ function setNodeElement(key: string, element: unknown) {
 function updatePortPositions() {
   const board = canvasBoard.value
   if (!board) return
-  const boardRect = board.getBoundingClientRect()
-  if (!boardRect.width || !boardRect.height) return
   const scale = zoom.value / 100
   const positions: Record<string, PortPoint> = {}
+  const activeKeys = new Set<string>()
+  const nodeIndex = nodesById.value
   for (const [key, element] of portElements) {
     if (!element.isConnected) continue
-    const rect = element.getBoundingClientRect()
+    const nodeId = key.startsWith('output:') ? key.slice('output:'.length) : key.slice('input:'.length, key.lastIndexOf(':'))
+    const node = nodeIndex.get(nodeId)
+    const nodeElement = nodeElements.get(nodeId)
+    if (!node || !nodeElement) continue
+    activeKeys.add(key)
+    let offset = portOffsets.get(key)
+    if (!offset) {
+      const nodeRect = nodeElement.getBoundingClientRect()
+      const portRect = element.getBoundingClientRect()
+      offset = { x: (portRect.left + portRect.width / 2 - nodeRect.left) / scale, y: (portRect.top + portRect.height / 2 - nodeRect.top) / scale }
+      portOffsets.set(key, offset)
+    }
     positions[key] = {
-      x: boardBounds.value.left + (rect.left + rect.width / 2 - boardRect.left) / scale,
-      y: boardBounds.value.top + (rect.top + rect.height / 2 - boardRect.top) / scale
+      x: node.x + offset.x,
+      y: node.y + offset.y
     }
   }
+  for (const key of portOffsets.keys()) if (!activeKeys.has(key) && !portElements.has(key)) portOffsets.delete(key)
   const old = portPositions.value
   const changed = Object.keys(positions).length !== Object.keys(old).length || Object.keys(positions).some(key => !old[key] || Math.abs(old[key].x - positions[key].x) > 0.5 || Math.abs(old[key].y - positions[key].y) > 0.5)
   if (changed) portPositions.value = positions
@@ -316,13 +572,18 @@ function startNodeMove(event: PointerEvent, node: MachineNode) {
     nodes: nodes.value.filter(item => selectedNodeIds.value.includes(item.id)).map(item => ({ node: item, x: item.x, y: item.y })),
     pointerId: event.pointerId,
     clientX: event.clientX,
-    clientY: event.clientY
+    clientY: event.clientY,
+    historyRecorded: false
   }
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
 }
 function moveNode(event: PointerEvent) {
   const move = movingNodes.value
   if (!move || move.pointerId !== event.pointerId) return
+  if (!move.historyRecorded) {
+    recordPlanChange()
+    move.historyRecorded = true
+  }
   if (moveFrame) cancelAnimationFrame(moveFrame)
   moveFrame = requestAnimationFrame(() => {
     const scale = zoom.value / 100
@@ -430,25 +691,6 @@ function finishPan(event: PointerEvent) {
   panning.value = null
   canvas.value?.classList.remove('is-panning')
 }
-function connectedDemand(producerId: string) {
-  const producer = nodes.value.find(node => node.id === producerId)
-  const producerRecipe = producer && recipeFor(producer)
-  if (!producerRecipe) return 0
-  let demand = 0
-  for (const consumer of nodes.value) {
-    const recipe = recipeFor(consumer)
-    if (!recipe) continue
-    for (const ingredient of recipe.ingredients) {
-      if (connections.value[inputKey(consumer.id, ingredient.item_id)] === producerId && producerRecipe.product_id === ingredient.item_id) {
-        demand += ingredient.quantity * recipe.rate / recipe.batch * consumer.machines
-      }
-    }
-  }
-  return demand
-}
-function machinesForDemand(demand: number, rate: number) {
-  return Math.max(1, Math.ceil((demand - 1e-9) / rate))
-}
 function synchronizeUpstream(start: MachineNode) {
   const visited = new Set<string>()
   const postOrder: MachineNode[] = []
@@ -456,54 +698,30 @@ function synchronizeUpstream(start: MachineNode) {
     if (visited.has(consumer.id)) return
     visited.add(consumer.id)
     for (const ingredient of recipeFor(consumer)?.ingredients ?? []) {
-      const provider = nodes.value.find(node => node.id === connections.value[inputKey(consumer.id, ingredient.item_id)] && recipeFor(node)?.product_id === ingredient.item_id)
+      const provider = nodesById.value.get(connections.value[inputKey(consumer.id, ingredient.item_id)] ?? '')
+      if (provider && recipeFor(provider)?.product_id !== ingredient.item_id) continue
       if (provider) visit(provider)
     }
     postOrder.push(consumer)
   }
   visit(start)
+  const demandByProducer = calculateDemandByProducer(nodes.value, connections.value, recipeById.value)
   for (const producer of postOrder.reverse()) {
     if (producer.id === start.id) continue
     const recipe = recipeFor(producer)
-    const demand = connectedDemand(producer.id)
+    const demand = demandByProducer.get(producer.id) ?? 0
     if (recipe?.rate && demand > 0) producer.machines = machinesForDemand(demand, recipe.rate)
   }
 }
 function consolidateOutputNodes() {
-  const canonicalByProduct = new Map<string, MachineNode>()
-  const replacements = new Map<string, string>()
-  for (const node of nodes.value) {
-    const productId = recipeFor(node)?.product_id
-    if (!productId) continue
-    const canonical = canonicalByProduct.get(productId)
-    if (canonical) replacements.set(node.id, canonical.id)
-    else canonicalByProduct.set(productId, node)
-  }
-  if (!replacements.size) return
-
-  const remapped: Record<string, string> = {}
-  for (const [key, sourceId] of Object.entries(connections.value)) {
-    const separator = key.lastIndexOf(':')
-    const originalConsumerId = key.slice(0, separator)
-    const itemId = key.slice(separator + 1)
-    const consumerId = replacements.get(originalConsumerId) ?? originalConsumerId
-    const providerId = replacements.get(sourceId) ?? sourceId
-    if (consumerId === providerId) continue
-    const consumer = nodes.value.find(node => node.id === consumerId)
-    if (!consumer || !recipeFor(consumer)?.ingredients.some(ingredient => ingredient.item_id === itemId)) continue
-    const remappedKey = inputKey(consumerId, itemId)
-    if (!remapped[remappedKey] || originalConsumerId === consumerId) remapped[remappedKey] = providerId
-  }
-  connections.value = remapped
-  nodes.value = nodes.value.filter(node => !replacements.has(node.id))
-  for (const producer of nodes.value) {
-    const recipe = recipeFor(producer)
-    const demand = connectedDemand(producer.id)
-    if (recipe?.rate && demand > 0) producer.machines = machinesForDemand(demand, recipe.rate)
-  }
-  selectedNodeIds.value = selectedNodeIds.value.map(id => replacements.get(id) ?? id).filter((id, index, all) => all.indexOf(id) === index)
+  const result = mergeDuplicateOutputs(nodes.value, connections.value, selectedNodeIds.value, recipeById.value)
+  if (result.nodes === nodes.value) return
+  nodes.value = result.nodes
+  connections.value = result.connections
+  selectedNodeIds.value = result.selectedNodeIds
 }
 function expandChain(root: MachineNode, relayout = true) {
+  if (relayout) recordPlanChange()
   function expand(parent: MachineNode, path = new Set<string>()) {
     const recipe = recipeFor(parent)
     if (!recipe || path.has(recipe.product_id)) return
@@ -511,26 +729,32 @@ function expandChain(root: MachineNode, relayout = true) {
     const needs = recipe.ingredients.map(ingredient => {
       const demand = ingredient.quantity * recipe.rate / recipe.batch * parent.machines
       const key = inputKey(parent.id, ingredient.item_id)
-      let producer = nodes.value.find(node => node.id === connections.value[key])
+      let producer = nodesById.value.get(connections.value[key] ?? '')
       let producerRecipe = producer && recipeFor(producer)
       if (!producerRecipe || producerRecipe.product_id !== ingredient.item_id || producerRecipe.rate <= 0) {
         if (producer) delete connections.value[key]
         producer = undefined
         producerRecipe = undefined
       }
-      const candidate = producerRecipe ?? (isImportedItem(ingredient.item_id) ? undefined : recipes.value.find(item => item.product_id === ingredient.item_id && item.rate > 0))
+      const candidate = producerRecipe ?? (isImportedItem(ingredient.item_id) ? undefined : recipesForItem(ingredient.item_id)[0])
       return { ingredient, demand, key, producer, producerRecipe, candidate }
     })
     for (const need of needs) {
-      const producer = need.producer ?? (!isImportedItem(need.ingredient.item_id) ? nodes.value.find(node => node.id !== parent.id && recipeFor(node)?.product_id === need.ingredient.item_id && (recipeFor(node)?.rate ?? 0) > 0 && !wouldCreateCycle(parent.id, node.id)) : undefined)
+      const producer = need.producer ?? (!isImportedItem(need.ingredient.item_id) ? (nodesByProduct.value.get(need.ingredient.item_id) ?? []).find(node => node.id !== parent.id && !wouldCreateCycle(parent.id, node.id)) : undefined)
       const producerRecipe = producer && recipeFor(producer)
       if (producer && producerRecipe) {
         connections.value[need.key] = producer.id
         need.producer = producer
         need.producerRecipe = producerRecipe
-        producer.machines = machinesForDemand(connectedDemand(producer.id), producerRecipe.rate)
-        expand(producer, nextPath)
       }
+    }
+    const demandByProducer = calculateDemandByProducer(nodes.value, connections.value, recipeById.value)
+    for (const need of needs) {
+      const producer = need.producer
+      const producerRecipe = need.producerRecipe
+      if (!producer || !producerRecipe) continue
+      producer.machines = machinesForDemand(demandByProducer.get(producer.id) ?? need.demand, producerRecipe.rate)
+      expand(producer, nextPath)
     }
     const newNeeds = needs.filter(need => !need.producer && need.candidate)
     const branchHeights = newNeeds.map(need => estimateBranchHeight(need.candidate!, nextPath))
@@ -560,12 +784,15 @@ function expandChain(root: MachineNode, relayout = true) {
   }
 }
 function setConnection(key: string, providerId: string) {
+  if (connections.value[key] !== (providerId || undefined)) recordPlanChange()
   if (providerId) connections.value[key] = providerId
   else delete connections.value[key]
   activeInput.value = ''
 }
 function setMachineCount(node: MachineNode, value: string | number) {
-  node.machines = Math.max(1, Math.min(999, Math.floor(Number(value) || 1)))
+  const next = Math.max(1, Math.min(999, Math.floor(Number(value) || 1)))
+  if (node.machines !== next) recordPlanChange()
+  node.machines = next
   synchronizeUpstream(node)
 }
 function amount(value: number) {
@@ -574,6 +801,7 @@ function amount(value: number) {
     : value.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 function buildProductionTargets() {
+  if (productionTargets.value.some(target => target.itemId && target.rate > 0)) recordPlanChange()
   if (!preserveExistingPlan.value) {
     nodes.value = []
     connections.value = {}
@@ -603,59 +831,10 @@ function buildProductionTargets() {
   void nextTick(centerCanvas)
 }
 
-const network = computed(() => {
-  const remaining = new Map<string, number>()
-  const external = new Map<string, { name: string; amount: number }>()
-  const connectionRows: Connection[] = []
-  const machineTotal = nodes.value.reduce((sum, node) => sum + node.machines, 0)
-
-  for (const node of nodes.value) {
-    const recipe = recipeFor(node)
-    if (!recipe) continue
-    const output = recipe.rate * node.machines
-    remaining.set(node.id, output)
-  }
-
-  for (const node of nodes.value) {
-    const recipe = recipeFor(node)
-    if (!recipe) continue
-    for (const ingredient of recipe.ingredients) {
-      const demand = ingredient.quantity * recipe.rate / recipe.batch * node.machines
-      const key = inputKey(node.id, ingredient.item_id)
-      const provider = nodes.value.find(candidate => candidate.id === connections.value[key] && recipeFor(candidate)?.product_id === ingredient.item_id)
-      let supplied = 0
-      if (provider) {
-        supplied = Math.min(demand, remaining.get(provider.id) ?? 0)
-        remaining.set(provider.id, Math.max(0, (remaining.get(provider.id) ?? 0) - supplied))
-        connectionRows.push({ key, from: provider, to: node, ingredient, produced: supplied })
-      }
-      if (demand - supplied > 0.000001) {
-        const missing = external.get(ingredient.item_id) ?? { name: ingredient.name, amount: 0 }
-        missing.amount += demand - supplied
-        external.set(ingredient.item_id, missing)
-      }
-    }
-  }
-
-  const surplus = new Map<string, { name: string; amount: number }>()
-  for (const node of nodes.value) {
-    const leftover = remaining.get(node.id) ?? 0
-    const recipe = recipeFor(node)
-    if (leftover > 0.000001 && recipe) {
-      const item = surplus.get(recipe.product_id) ?? { name: recipe.product, amount: 0 }
-      item.amount += leftover
-      surplus.set(recipe.product_id, item)
-    }
-  }
-  return {
-    machineTotal,
-    external: [...external.entries()].map(([id, item]) => ({ id, ...item })).sort((a, b) => a.name.localeCompare(b.name)),
-    surplus: [...surplus.entries()].map(([id, item]) => ({ id, ...item })).sort((a, b) => a.name.localeCompare(b.name)),
-    connectionRows
-  }
-})
+const network = computed(() => calculateNetworkSummary(nodes.value, connections.value, recipeById.value))
 
 const viewTitle = computed(() => ({ network: 'Network Graph', tree: 'Tree List', items: 'Items', buildings: 'Buildings', targets: 'Production Targets', prices: 'Prices' })[activeView.value])
+const catalogueAgeDays = computed(() => metadata.value ? Math.max(0, Math.floor((Date.now() - new Date(metadata.value.retrievedAt).getTime()) / 86_400_000)) : 0)
 const importedInputBalances = computed(() => importedInputs.value.map(input => {
   const item = materialOptions.value.find(candidate => candidate.id === input.itemId)
   const required = network.value.external.find(candidate => candidate.id === input.itemId)?.amount ?? 0
@@ -665,19 +844,23 @@ const treeRows = computed<TreeRow[]>(() => {
   const suppliedNodes = new Set(Object.values(connections.value))
   const roots = nodes.value.filter(node => !suppliedNodes.has(node.id))
   const rows: TreeRow[] = []
+  const linksByInput = new Map(network.value.connectionRows.map(link => [link.key, link]))
   function visit(node: MachineNode, depth: number, path: Set<string>) {
     const recipe = recipeFor(node)
     if (!recipe) return
     const nodeRate = recipe.rate * node.machines
-    rows.push({ key: `node:${node.id}:${depth}`, depth, kind: 'product', name: recipe.product, detail: `${recipe.station.replaceAll('_', ' ')} · ${amount(nodeRate)} / min`, machines: node.machines, nodeId: node.id })
+    const collapsed = collapsedTreeNodeIds.value.includes(node.id)
+    rows.push({ key: `node:${node.id}:${depth}`, depth, kind: 'product', name: recipe.product, detail: `${recipe.station.replaceAll('_', ' ')} · ${amount(nodeRate)} / min`, machines: node.machines, nodeId: node.id, hasChildren: recipe.ingredients.length > 0, collapsed })
     if (path.has(node.id)) return
+    if (collapsed) return
     const nextPath = new Set(path).add(node.id)
     for (const ingredient of recipe.ingredients) {
       const rate = ingredient.quantity * recipe.rate / recipe.batch * node.machines
-      const supplier = nodes.value.find(candidate => candidate.id === connections.value[inputKey(node.id, ingredient.item_id)] && recipeFor(candidate)?.product_id === ingredient.item_id)
-      const supplied = supplier ? network.value.connectionRows.find(link => link.to.id === node.id && link.ingredient.item_id === ingredient.item_id)?.produced ?? 0 : 0
-      rows.push({ key: `input:${node.id}:${ingredient.item_id}:${depth}`, depth: depth + 1, kind: 'ingredient', name: ingredient.name, detail: `${amount(supplied)} / ${amount(rate)} per min${supplier ? ' · connected' : ' · external supply'}`, external: !supplier })
-      if (supplier && !nextPath.has(supplier.id)) visit(supplier, depth + 2, nextPath)
+      const supplier = nodesById.value.get(connections.value[inputKey(node.id, ingredient.item_id)] ?? '')
+      const validSupplier = supplier && recipeFor(supplier)?.product_id === ingredient.item_id ? supplier : undefined
+      const supplied = validSupplier ? linksByInput.get(inputKey(node.id, ingredient.item_id))?.produced ?? 0 : 0
+      rows.push({ key: `input:${node.id}:${ingredient.item_id}:${depth}`, depth: depth + 1, kind: 'ingredient', name: ingredient.name, detail: `${amount(supplied)} / ${amount(rate)} per min${validSupplier ? ' · connected' : ' · external supply'}`, external: !validSupplier })
+      if (validSupplier && !nextPath.has(validSupplier.id)) visit(validSupplier, depth + 2, nextPath)
     }
   }
   for (const root of roots.length ? roots : nodes.value) visit(root, 0, new Set())
@@ -723,6 +906,10 @@ const buildingSummaries = computed<BuildingSummary[]>(() => {
   const needle = viewSearch.value.trim().toLowerCase()
   return [...summaries.values()].filter(building => !needle || `${building.name} ${building.products.join(' ')}`.toLowerCase().includes(needle)).sort((a, b) => a.name.localeCompare(b.name))
 })
+const filteredMarketQuotes = computed(() => {
+  const needle = viewSearch.value.trim().toLowerCase()
+  return (marketData.value?.quotes ?? []).filter(quote => !needle || `${quote.name} ${quote.symbol}`.toLowerCase().includes(needle))
+})
 
 const boardBounds = computed(() => ({
   left: Math.min(canvasExtent.value.left, ...nodes.value.map(node => node.x - 80)),
@@ -750,26 +937,33 @@ const selectionBoxStyle = computed(() => {
 
 function arrangeNetwork() {
   if (!nodes.value.length) return
-  const referenced = new Set(Object.values(connections.value))
-  let roots = nodes.value.filter(node => !referenced.has(node.id))
-  if (!roots.length) roots = [...nodes.value]
-  const depths = new Map<string, number>(roots.map(node => [node.id, 0]))
-  for (let pass = 0; pass < nodes.value.length; pass++) {
-    let changed = false
-    for (const consumer of nodes.value) {
-      const depth = depths.get(consumer.id)
-      if (depth === undefined) continue
-      for (const ingredient of recipeFor(consumer)?.ingredients ?? []) {
-        const provider = nodes.value.find(node => node.id === connections.value[inputKey(consumer.id, ingredient.item_id)] && recipeFor(node)?.product_id === ingredient.item_id)
-        if (!provider) continue
-        const nextDepth = depth + 1
-        if ((depths.get(provider.id) ?? -1) < nextDepth) {
-          depths.set(provider.id, nextDepth)
-          changed = true
-        }
-      }
+  const providersByConsumer = new Map<string, MachineNode[]>()
+  const waitingConsumers = new Map(nodes.value.map(node => [node.id, 0]))
+  for (const consumer of nodes.value) {
+    for (const ingredient of recipeFor(consumer)?.ingredients ?? []) {
+      const provider = nodesById.value.get(connections.value[inputKey(consumer.id, ingredient.item_id)] ?? '')
+      if (!provider || recipeFor(provider)?.product_id !== ingredient.item_id) continue
+      const providers = providersByConsumer.get(consumer.id) ?? []
+      providers.push(provider)
+      providersByConsumer.set(consumer.id, providers)
+      waitingConsumers.set(provider.id, (waitingConsumers.get(provider.id) ?? 0) + 1)
     }
-    if (!changed) break
+  }
+  const roots = nodes.value.filter(node => waitingConsumers.get(node.id) === 0)
+  const depths = new Map<string, number>(roots.map(node => [node.id, 0]))
+  const queue = roots.length ? [...roots] : [...nodes.value]
+  const processed = new Set<string>()
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const consumer = queue[cursor]
+    if (processed.has(consumer.id)) continue
+    processed.add(consumer.id)
+    const depth = depths.get(consumer.id) ?? 0
+    for (const provider of providersByConsumer.get(consumer.id) ?? []) {
+      depths.set(provider.id, Math.max(depths.get(provider.id) ?? 0, depth + 1))
+      const waiting = (waitingConsumers.get(provider.id) ?? 0) - 1
+      waitingConsumers.set(provider.id, waiting)
+      if (waiting === 0) queue.push(provider)
+    }
   }
   for (const node of nodes.value) if (!depths.has(node.id)) depths.set(node.id, 0)
   const layers = new Map<number, MachineNode[]>()
@@ -780,15 +974,12 @@ function arrangeNetwork() {
     layers.set(depth, layer)
   }
   const maxDepth = Math.max(...layers.keys())
+  const centerByNode = new Map<string, number>()
   for (let depth = 0; depth <= maxDepth; depth++) {
     const layer = layers.get(depth) ?? []
-    const centerFor = (node: MachineNode) => {
-      const consumers = nodes.value.filter(consumer => depth === 0 ? false : recipeFor(consumer)?.ingredients.some(ingredient => connections.value[inputKey(consumer.id, ingredient.item_id)] === node.id) && depths.get(consumer.id) === depth - 1)
-      return consumers.length ? consumers.reduce((sum, consumer) => sum + consumer.y + machineCardHeight(recipeFor(consumer)!) / 2, 0) / consumers.length : node.y
-    }
     layer.sort((a, b) => depth === 0
       ? a.y - b.y || (recipeFor(a)?.product ?? '').localeCompare(recipeFor(b)?.product ?? '')
-      : centerFor(a) - centerFor(b) || (recipeFor(a)?.product ?? '').localeCompare(recipeFor(b)?.product ?? ''))
+      : (centerByNode.get(a.id) ?? a.y) - (centerByNode.get(b.id) ?? b.y) || (recipeFor(a)?.product ?? '').localeCompare(recipeFor(b)?.product ?? ''))
     const totalHeight = layer.reduce((sum, node) => sum + machineCardHeight(recipeFor(node)!), 0) + Math.max(0, layer.length - 1) * TREE_GAP
     let y = -totalHeight / 2
     for (const node of layer) {
@@ -796,6 +987,18 @@ function arrangeNetwork() {
       node.y = Math.round(y / GRID) * GRID
       y += machineCardHeight(recipeFor(node)!) + TREE_GAP
     }
+    const centerSums = new Map<string, { sum: number; count: number }>()
+    for (const consumer of layer) {
+      const center = consumer.y + machineCardHeight(recipeFor(consumer)!) / 2
+      for (const provider of providersByConsumer.get(consumer.id) ?? []) {
+        if (depths.get(provider.id) !== depth + 1) continue
+        const result = centerSums.get(provider.id) ?? { sum: 0, count: 0 }
+        result.sum += center
+        result.count++
+        centerSums.set(provider.id, result)
+      }
+    }
+    for (const [nodeId, result] of centerSums) centerByNode.set(nodeId, result.sum / result.count)
   }
 }
 
@@ -827,7 +1030,7 @@ function linkPath(link: Connection) {
   <main class="app-shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="Capital Rift Factory Planner home"><span class="brand-mark">CR</span><span>CAPITAL RIFT <small>FACTORY PLANNER</small></span></a>
-      <div class="top-actions"><span class="save-state"><i /> Saved in this browser</span><button class="button subtle" :disabled="!nodes.length" @click="nodes = []; connections = {}; selectedNodeIds = []">Clear plan</button></div>
+      <div class="top-actions"><span class="save-state"><i /> Saved in this browser</span><button class="button subtle" :disabled="!undoHistory.length" title="Undo (Ctrl+Z)" @click="undoPlan">Undo</button><button class="button subtle" :disabled="!redoHistory.length" title="Redo (Ctrl+Shift+Z)" @click="redoPlan">Redo</button><button class="button subtle" :disabled="!nodes.length && !productionTargets.length && !importedInputs.length" @click="exportPlan">Export</button><button class="button subtle" @click="importPlanInput?.click()">Import</button><input ref="importPlanInput" type="file" accept="application/json,.json" hidden @change="importPlanFile"><button class="button subtle" :disabled="!nodes.length && !productionTargets.length && !importedInputs.length" @click="clearPlan">Clear plan</button></div>
     </header>
 
     <nav class="view-tabs" aria-label="Planner views">
@@ -862,7 +1065,7 @@ function linkPath(link: Connection) {
         <div class="plan-toolbar">
           <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong></div>
           <div v-if="activeView === 'network'" class="toolbar-actions"><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="icon-button" title="Center machines" aria-label="Center machines" @click="centerCanvas">⌖</button></div>
-          <span v-else-if="activeView === 'prices'" class="view-count">COMING SOON</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
+          <span v-else-if="activeView === 'prices'" class="view-count">{{ marketData ? `${marketData.quotes.length} LIVE QUOTES` : 'LIVE MARKET' }}</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
         </div>
         <div v-show="activeView === 'network'" ref="canvas" class="canvas-viewport" :class="{ 'is-panning': panning }" @pointerdown="startSelectOrPan" @pointermove="selectOrPanMove" @pointerup="finishSelectOrPan" @pointercancel="finishSelectOrPan" @dragenter.prevent="updateDragPreview" @dragover.prevent="updateDragPreview" @drop.prevent="dropCatalogRecipe" @contextmenu.prevent>
         <div ref="canvasBoard" class="canvas-board" :class="{ 'has-nodes': nodes.length }" :style="{ zoom: `${zoom}%`, width: `${boardWidth}px`, height: `${boardHeight}px`, backgroundPosition: `${-boardBounds.left}px ${-boardBounds.top}px` }">
@@ -912,8 +1115,8 @@ function linkPath(link: Connection) {
                 <article v-for="target in productionTargets" :key="target.id" class="target-card">
                   <div class="target-entry-row">
                     <label class="target-product target-search-control"><span class="item-icon">{{ materialOptions.find(item => item.id === target.itemId)?.name.slice(0, 1).toUpperCase() ?? '⌕' }}</span><span class="target-search-input"><span class="search-icon">⌕</span><input type="search" :list="`output-items-${target.id}`" :value="materialOptions.find(item => item.id === target.itemId)?.name ?? ''" placeholder="Search products..." :aria-label="`Search output item ${target.id}`" @change="setTargetItemByName(target, ($event.target as HTMLInputElement).value)" @keydown.enter.prevent="buildTargetFromSearch(target, ($event.target as HTMLInputElement).value)"><datalist :id="`output-items-${target.id}`"><option v-for="item in productOptions" :key="item.id" :value="item.name"></option></datalist></span></label>
-                    <div class="target-amount"><label :for="`output-rate-${target.id}`">Output amount</label><div class="target-rate-control"><input :id="`output-rate-${target.id}`" v-model.number="target.rate" type="number" min="0.01" step="0.1" aria-label="Output amount per minute" @keydown.enter.prevent="buildProductionTargets"><span>items / min</span></div></div>
-                    <button class="remove-target" :aria-label="`Remove ${materialOptions.find(item => item.id === target.itemId)?.name ?? 'output'} output`" title="Remove output" @click="productionTargets = productionTargets.filter(item => item.id !== target.id)">×</button>
+                    <div class="target-amount"><label :for="`output-rate-${target.id}`">Output amount</label><div class="target-rate-control"><input :id="`output-rate-${target.id}`" :value="target.rate" type="number" min="0.01" step="0.1" aria-label="Output amount per minute" @focus="recordPlanChange" @change="target.rate = Math.max(0, Number(($event.target as HTMLInputElement).value) || 0)" @keydown.enter.prevent="buildProductionTargets"><span>items / min</span></div></div>
+                    <button class="remove-target" :aria-label="`Remove ${materialOptions.find(item => item.id === target.itemId)?.name ?? 'output'} output`" title="Remove output" @click="removeProductionTarget(target.id)">×</button>
                   </div>
                 </article>
               </div>
@@ -925,8 +1128,8 @@ function linkPath(link: Connection) {
               <p class="target-help">Items listed here are treated as direct imports when a chain is generated, so no producer machines are added for them. Existing connected producers remain in your current plan.</p>
               <div v-if="importedInputs.length" class="target-list">
                 <article v-for="input in importedInputBalances" :key="input.id" class="target-card input-target-card">
-                  <div class="target-card-top"><label class="target-product"><span class="item-icon">{{ input.name.slice(0, 1).toUpperCase() }}</span><select :value="input.itemId" :aria-label="`Imported input ${input.name}`" @change="setImportedItemById(input.id, ($event.target as HTMLSelectElement).value)"><option v-for="item in materialOptions" :key="item.id" :value="item.id" :disabled="importedInputs.some(existing => existing.id !== input.id && existing.itemId === item.id)">{{ item.name }}</option></select></label><button class="remove-target" :aria-label="`Remove ${input.name} input`" title="Remove input" @click="importedInputs = importedInputs.filter(item => item.id !== input.id)">×</button></div>
-                  <div class="input-target-summary"><span>External requirement <strong>{{ amount(input.required) }} / min</strong></span><span>Available <strong>{{ amount(input.rate) }} / min</strong></span><span :class="{ 'needs-supply': input.shortage > 0 }">Shortfall <strong>{{ amount(input.shortage) }} / min</strong></span></div>
+                  <div class="target-card-top"><label class="target-product"><span class="item-icon">{{ input.name.slice(0, 1).toUpperCase() }}</span><select :value="input.itemId" :aria-label="`Imported input ${input.name}`" @change="setImportedItemById(input.id, ($event.target as HTMLSelectElement).value)"><option v-for="item in materialOptions" :key="item.id" :value="item.id" :disabled="importedInputs.some(existing => existing.id !== input.id && existing.itemId === item.id)">{{ item.name }}</option></select></label><button class="remove-target" :aria-label="`Remove ${input.name} input`" title="Remove input" @click="removeImportedInput(input.id)">×</button></div>
+                  <div class="input-target-summary"><span>External requirement <strong>{{ amount(input.required) }} / min</strong></span><span>Available <strong>{{ amount(input.rate) }} / min</strong></span><span :class="{ 'needs-supply': input.shortage > 0 }">Shortfall <strong>{{ amount(input.shortage) }} / min</strong><button v-if="input.shortage > 0" class="tree-expand" @click="reviewItemBalance(input.name)">Review flow</button></span></div>
                   <div class="target-rate"><label :for="`input-rate-${input.id}`">Available amount</label><div class="target-rate-control"><input :id="`input-rate-${input.id}`" :value="input.rate" type="number" min="0" step="0.1" @change="setImportedRate(input.id, ($event.target as HTMLInputElement).value)"><span>items / min</span></div></div>
                 </article>
               </div>
@@ -934,26 +1137,35 @@ function linkPath(link: Connection) {
             </div>
             <div v-else class="target-section options-section">
               <div class="target-section-heading"><div><p class="eyebrow">GENERATION OPTIONS</p><h3>How to build the plan</h3></div></div>
-              <label class="target-option"><input v-model="autoArrangeGenerated" type="checkbox"><span><strong>Arrange the graph automatically</strong><small>Place outputs on the right and ingredient producers in compact columns.</small></span></label>
-              <label class="target-option"><input v-model="preserveExistingPlan" type="checkbox"><span><strong>Keep the current plan</strong><small>Reuse matching producers and add requested outputs to the existing graph.</small></span></label>
+              <label class="target-option"><input v-model="autoArrangeGenerated" type="checkbox" @focus="recordPlanChange"><span><strong>Arrange the graph automatically</strong><small>Place outputs on the right and ingredient producers in compact columns.</small></span></label>
+              <label class="target-option"><input v-model="preserveExistingPlan" type="checkbox" @focus="recordPlanChange"><span><strong>Keep the current plan</strong><small>Reuse matching producers and add requested outputs to the existing graph.</small></span></label>
             </div>
           </section>
-          <div v-else-if="activeView === 'prices'" class="prices-placeholder"><span class="prices-mark">¤</span><p class="eyebrow">COMING SOON</p><h2>Prices</h2><p>Price data and item values will be added here in a future update.</p></div>
+          <div v-else-if="activeView === 'prices'" class="prices-page">
+            <div class="table-intro"><div><p class="eyebrow">LIVE MARKET</p><h2>Market prices</h2></div><span v-if="marketData">Updated {{ new Date(marketData.asOf).toLocaleString() }}</span><span v-else>Current public quotes</span></div>
+            <p class="prices-note">These are live quotes published on Capital Rift’s public market ticker. The feed lists current top movers; items absent from the feed do not have a displayed price. <a href="https://capitalrift.com/" target="_blank" rel="noreferrer">Source ↗</a></p>
+            <div class="prices-controls"><label class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" placeholder="Search market quotes"></label><button class="button" :disabled="marketLoading" @click="loadMarketPrices(true)">{{ marketLoading ? 'Refreshing…' : 'Refresh prices' }}</button></div>
+            <p v-if="marketLoading && !marketData" class="table-empty prices-status">Loading live quotes…</p><p v-else-if="marketError" class="table-empty prices-status" role="alert">{{ marketError }}</p>
+            <div v-else class="table-scroll"><table class="planner-table"><thead><tr><th>Item</th><th>Ticker</th><th>Market price</th><th>Units traded · 24h</th></tr></thead><tbody>
+              <tr v-for="quote in filteredMarketQuotes" :key="quote.symbol"><th scope="row"><span class="table-item-icon">{{ quote.name.slice(0, 1) }}</span>{{ quote.name }}</th><td>{{ quote.symbol }}</td><td>{{ '$' + quote.price.toFixed(2) }}</td><td>{{ amount(quote.units24h) }}</td></tr>
+              <tr v-if="!filteredMarketQuotes.length"><td colspan="4" class="table-empty">{{ marketData?.quotes.length ? 'No market quotes match this search.' : 'No live market quotes are available.' }}</td></tr>
+            </tbody></table></div>
+          </div>
           <label v-else-if="activeView === 'items' || activeView === 'buildings'" class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" :placeholder="activeView === 'items' ? 'Search planned items' : 'Search buildings or products'"></label>
           <div v-if="activeView === 'tree'" class="tree-panel">
             <div class="table-intro"><div><p class="eyebrow">RECIPE DEPENDENCIES</p><h2>Production tree</h2></div><span>{{ nodes.length }} machines · {{ network.external.length }} raw inputs</span></div>
             <div v-if="treeRows.length" class="tree-list">
               <div v-for="row in treeRows" :key="row.key" class="tree-row" :class="[`tree-${row.kind}`, { 'is-external': row.external }]" :style="{ paddingLeft: `${14 + row.depth * 19}px` }">
-                <span class="tree-marker">{{ row.kind === 'product' ? '▣' : row.external ? '○' : '↳' }}</span><strong>{{ row.name }}</strong><span class="tree-detail">{{ row.detail }}</span><button v-if="row.kind === 'product' && row.nodeId && canExpandNodeId(row.nodeId)" class="tree-expand" :title="`Create producer machines for ${row.name} inputs`" @click.stop="expandTreeNode(row.nodeId)">Expand chain</button><span v-if="row.machines" class="tree-count">{{ row.machines }} machine{{ row.machines === 1 ? '' : 's' }}</span>
+                <span class="tree-marker">{{ row.kind === 'product' ? '▣' : row.external ? '○' : '↳' }}</span><strong>{{ row.name }}</strong><span class="tree-detail">{{ row.detail }}</span><button v-if="row.kind === 'product' && row.nodeId && row.hasChildren" class="tree-expand" :aria-expanded="!row.collapsed" :title="row.collapsed ? `Show ${row.name} ingredients` : `Hide ${row.name} ingredients`" @click.stop="toggleTreeNode(row.nodeId)">{{ row.collapsed ? 'Show chain' : 'Hide chain' }}</button><button v-if="row.kind === 'product' && row.nodeId" class="tree-focus" :title="`Focus ${row.name} in the graph`" @click.stop="focusNode(row.nodeId)">Graph</button><button v-if="row.kind === 'product' && row.nodeId && canExpandNodeId(row.nodeId)" class="tree-expand" :title="`Create producer machines for ${row.name} inputs`" @click.stop="expandTreeNode(row.nodeId)">Expand chain</button><span v-if="row.machines" class="tree-count">{{ row.machines }} machine{{ row.machines === 1 ? '' : 's' }}</span>
               </div>
             </div>
             <div v-else class="view-empty"><h2>No production tree yet</h2><p>Add a recipe and expand its ingredient chain to see how materials connect.</p></div>
           </div>
           <div v-else-if="activeView === 'items'" class="table-panel">
             <div class="table-intro"><div><p class="eyebrow">MATERIAL FLOW</p><h2>Item balances</h2></div><span>All rates per minute</span></div>
-            <div class="table-scroll"><table class="planner-table"><thead><tr><th>Item</th><th>Produced</th><th>Required</th><th>Connected</th><th>External</th><th>Surplus</th></tr></thead><tbody>
-              <tr v-for="item in itemBalances" :key="item.id"><th scope="row"><span class="table-item-icon">{{ item.name.slice(0, 1) }}</span>{{ item.name }}</th><td>{{ amount(item.produced) }}</td><td>{{ amount(item.required) }}</td><td>{{ amount(item.connected) }}</td><td :class="{ 'needs-supply': item.external > 0 }">{{ amount(item.external) }}</td><td :class="{ 'has-surplus': item.surplus > 0 }">{{ amount(item.surplus) }}</td></tr>
-              <tr v-if="!itemBalances.length"><td colspan="6" class="table-empty">Add machines to see item balances.</td></tr>
+            <div class="table-scroll"><table class="planner-table"><thead><tr><th>Item</th><th>Produced</th><th>Required</th><th>Connected</th><th>External</th><th>Surplus</th><th></th></tr></thead><tbody>
+              <tr v-for="item in itemBalances" :key="item.id"><th scope="row"><span class="table-item-icon">{{ item.name.slice(0, 1) }}</span>{{ item.name }}</th><td>{{ amount(item.produced) }}</td><td>{{ amount(item.required) }}</td><td>{{ amount(item.connected) }}</td><td :class="{ 'needs-supply': item.external > 0 }">{{ amount(item.external) }}</td><td :class="{ 'has-surplus': item.surplus > 0 }">{{ amount(item.surplus) }}</td><td><button v-if="item.external > 0" class="tree-expand" @click="configureImportForItem(item.id)">Set import</button></td></tr>
+              <tr v-if="!itemBalances.length"><td colspan="7" class="table-empty">Add machines to see item balances.</td></tr>
             </tbody></table></div>
           </div>
           <div v-else-if="activeView === 'buildings'" class="table-panel">
@@ -979,7 +1191,7 @@ function linkPath(link: Connection) {
           <p v-else class="summary-empty">All production is connected.</p>
         </section>
         <div class="planner-note"><span class="note-icon">i</span><p>Connect a machine output to a matching input to balance the flow. Unconnected requirements are listed as external inputs.</p></div>
-        <footer v-if="metadata" class="source-foot">{{ metadata.recipeCount }} recipes · Snapshot imported {{ new Date(metadata.retrievedAt).toLocaleDateString() }}<a href="https://github.com/mrawsky/capitalrift-tools" target="_blank" rel="noreferrer">Data source ↗</a></footer>
+        <footer v-if="metadata" class="source-foot">{{ metadata.recipeCount }} recipes · Snapshot imported {{ new Date(metadata.retrievedAt).toLocaleDateString() }}<strong v-if="catalogueAgeDays >= 30" class="stale-source">Catalogue may be out of date</strong><a href="https://github.com/mrawsky/capitalrift-tools" target="_blank" rel="noreferrer">Data source ↗</a></footer>
       </aside>
     </div>
     <div v-if="error" class="toast" role="alert">{{ error }}</div>
@@ -996,4 +1208,5 @@ function linkPath(link: Connection) {
 @media(max-width:700px){.app-shell{height:auto;min-height:100vh;overflow:visible}.topbar{height:52px;padding:0 12px}.save-state{display:none}.view-tabs{height:40px;overflow-x:auto;padding:0 8px}.view-tab{padding:0 11px;white-space:nowrap}.planner-layout{display:flex;flex-direction:column;min-height:calc(100vh - 92px)}.sidebar{height:280px;flex:none;border-right:0;border-bottom:1px solid #27302b}.catalog-list{display:block}.sidebar-tip{display:none}.main-area{height:calc(100vh - 372px);min-height:480px}.table-panel,.tree-panel{padding:15px 12px}.tree-row{gap:6px;padding-right:8px}.tree-row strong{min-width:72px}.tree-detail{font-size:8px}.planner-table th,.planner-table td{padding:7px 8px}.plan-toolbar{padding:0 10px}.canvas-viewport{min-height:0}.inspector{display:flex;min-height:300px;border-left:0;border-top:1px solid #27302b}.machine-card{width:280px}.flow-line{stroke-dasharray:4 4}}
 .target-entry-row{display:grid;grid-template-columns:minmax(0,1fr) 190px 30px;align-items:end;gap:14px}.target-search-control{display:flex;align-items:center;gap:11px;min-width:0}.target-search-control>.item-icon{width:36px;height:36px}.target-search-input{height:36px;min-width:0;flex:1;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid #313c34;border-radius:5px;background:#111713;transition:border-color .15s,box-shadow .15s}.target-search-input:focus-within{border-color:#668469;box-shadow:0 0 0 2px #80b58722}.target-search-input>.search-icon{flex:none;color:#89958b;font-size:19px;line-height:1}.target-search-input input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#dbe2db;font:11px 'DM Sans',sans-serif}.target-search-input input::placeholder{color:#68756b}.target-amount{display:flex;flex-direction:column;gap:5px}.target-amount>label{color:#849187;font:8px 'DM Mono',monospace;letter-spacing:.06em;text-transform:uppercase}.target-rate-control{height:36px;display:flex;align-items:center;gap:7px;padding:0 9px;border:1px solid #313c34;border-radius:5px;background:#111713;transition:border-color .15s,box-shadow .15s}.target-rate-control:focus-within{border-color:#668469;box-shadow:0 0 0 2px #80b58722}.target-rate-control input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#e1e9e2;text-align:right;font:11px 'DM Mono',monospace;appearance:textfield}.target-rate-control input::-webkit-inner-spin-button,.target-rate-control input::-webkit-outer-spin-button{margin:0;appearance:none}.target-rate-control>span{flex:none;color:#778579;font:8px 'DM Mono',monospace;white-space:nowrap}.target-entry-row>.remove-target{height:36px}.target-rate .target-rate-control{margin-left:auto}.target-rate .target-rate-control input{width:84px}.target-rate-control input:focus-visible,.target-search-input input:focus-visible{outline:none}@media(max-width:700px){.target-entry-row{grid-template-columns:minmax(0,1fr) 32px;gap:10px}.target-search-control{grid-column:1/-1}.target-amount{grid-column:1}.target-entry-row>.remove-target{grid-column:2;grid-row:2;align-self:end}.target-rate{margin-left:0}.target-section{padding:14px}.target-section-heading{align-items:flex-start}.target-add-button{height:35px;padding-right:8px}.target-add-button>span:last-child{font-size:9px}}
 .prices-placeholder{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center}.prices-mark{width:54px;height:54px;display:grid;place-items:center;margin-bottom:18px;border:1px solid #405443;border-radius:12px;background:#1d2920;color:#acd0ae;font:26px 'DM Mono',monospace}.prices-placeholder .eyebrow{margin-bottom:7px}.prices-placeholder h2{margin:0 0 8px;color:#dfe7df;font-size:17px;font-weight:500}.prices-placeholder>p:last-child{max-width:340px;margin:0;color:#87948a;font-size:11px;line-height:1.6}
+.prices-page{min-height:100%;padding:20px 22px}.prices-page .table-intro{margin-bottom:8px}.prices-note{max-width:740px;margin:0 0 15px;color:#849187;font-size:10px;line-height:1.6}.prices-note a{margin-left:4px;color:#9fc6a2;text-decoration:none}.prices-note a:hover{text-decoration:underline}.prices-controls{display:flex;align-items:center;gap:10px;margin-bottom:14px}.prices-controls .view-search{flex:1;margin:0}.prices-status{padding:28px!important;text-align:center!important}.prices-page .planner-table td:nth-child(2){color:#98ad9b;text-align:left;font-family:'DM Mono',monospace}.prices-page .planner-table td:nth-child(3),.prices-page .planner-table td:nth-child(4){font-family:'DM Mono',monospace}.prices-page .planner-table tbody tr th[scope=row]{text-align:left}@media(max-width:700px){.prices-page{padding:15px 12px}.prices-controls{align-items:stretch}.prices-controls .button{padding:6px 8px;font-size:9px}.prices-page .planner-table th,.prices-page .planner-table td{padding:7px 6px}}
 </style>
