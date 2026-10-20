@@ -16,7 +16,14 @@ export default defineEventHandler(async (event) => {
     FROM recipes r JOIN items i ON i.id = r.product_item_id ${where} ORDER BY i.name COLLATE NOCASE`).bind(...params).all<Record<string, unknown>>()
   const { results: ingredients } = await db.prepare(`SELECT ri.recipe_id, ri.item_id, i.name, ri.quantity FROM recipe_ingredients ri
     JOIN items i ON i.id = ri.item_id ORDER BY i.name COLLATE NOCASE`).all<{ recipe_id: string; item_id: string; name: string; quantity: number }>()
+  const { results: imageRows } = await db.prepare('SELECT item_id FROM item_images').all<{ item_id: string }>()
+  const itemImages = new Set(imageRows.map(row => row.item_id))
   const byRecipe = new Map<string, typeof ingredients>()
   for (const ingredient of ingredients) byRecipe.set(ingredient.recipe_id, [...(byRecipe.get(ingredient.recipe_id) ?? []), ingredient])
-  return rows.map(recipe => ({ ...recipe, image_url: machineAssets.has(String(recipe.station)) ? `/machines/${recipe.station}.png` : null, ingredients: (byRecipe.get(String(recipe.id)) ?? []).map(({ recipe_id, ...rest }) => rest) }))
+  return rows.map(recipe => ({
+    ...recipe,
+    image_url: machineAssets.has(String(recipe.station)) ? `/machines/${recipe.station}.png` : null,
+    product_image_url: itemImages.has(String(recipe.product_id)) ? `/api/items/${recipe.product_id}/image` : null,
+    ingredients: (byRecipe.get(String(recipe.id)) ?? []).map(({ recipe_id, ...rest }) => ({ ...rest, image_url: itemImages.has(rest.item_id) ? `/api/items/${rest.item_id}/image` : null }))
+  }))
 })

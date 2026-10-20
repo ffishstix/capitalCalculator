@@ -34,6 +34,12 @@ The one-time signed-in browser bookmarklet is still available at [`templates/cap
 
 After signing in, run `npm run images:refresh` to collect the game build's 22 machine PNG thumbnails. The command uses the same local Chrome profile to discover current versioned asset URLs, checks that every planner machine has one valid PNG, then saves the images and their source URLs in SQLite in one transaction. Run `npm run images:export` after refreshing to copy the thumbnails into `public/machines` for the next Pages build. Visitors then receive static PNGs without game credentials. If discovery or a download fails, the previous set stays in the database. These are machine thumbnails, not 3D models or material textures. Check artwork reuse terms before public deployment.
 
+## Item images
+
+Run `npm run items:images:refresh` with the saved signed-in Chrome profile to collect current inventory icons and furniture thumbnails. The refresh checks that every catalogue item has an image, validates each download, and saves the complete set to local SQLite in one transaction. Small inlined game icons are decoded from the current bundle; furniture PNGs are resized to WebP for the planner's item displays. The collector currently finds 353 image sources, including all 346 catalogue items and the three additional market tickers.
+
+Run `npm run items:images:export:d1`, then `npx wrangler d1 execute capitalrift-db --remote --file .tmp/item-images-d1.sql --yes` to update the production D1 table. The Pages API serves each saved item image from D1 with an ETag. If the game session expires, use `npm run prices:login` to sign in again; the collector never stores a password or copies cookies.
+
 ## Troubleshooting
 
 - **Chrome does not open:** install Google Chrome, then retry `npm run prices:login`.

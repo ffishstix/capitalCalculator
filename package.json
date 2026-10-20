@@ -12,6 +12,8 @@
     "prices:refresh:cloud": "node --env-file=.env scripts/market-price-sync.mjs refresh",
     "images:refresh": "node scripts/machine-image-sync.mjs",
     "images:export": "node scripts/export-machine-assets.mjs",
+    "items:images:refresh": "node scripts/item-image-sync.mjs",
+    "items:images:export:d1": "node scripts/export-item-images-d1.mjs",
     "test": "node --test tests/*.test.js",
     "postinstall": "nuxt prepare"
   },
@@ -19,6 +21,7 @@
     "better-sqlite3": "^12.4.1",
     "nuxt": "^4.4.8",
     "playwright": "^1.64.1",
+    "sharp": "^0.34.5",
     "vue": "^3.5.42"
   },
   "devDependencies": {

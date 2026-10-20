@@ -14,6 +14,14 @@ CREATE TABLE IF NOT EXISTS machine_images (
   source_url TEXT NOT NULL,
   fetched_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS item_images (
+  item_id TEXT PRIMARY KEY,
+  content_type TEXT NOT NULL CHECK(content_type IN ('image/png', 'image/webp')),
+  image_data BLOB NOT NULL,
+  sha256 TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  fetched_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS recipes (
   id TEXT PRIMARY KEY, label TEXT NOT NULL, station_id TEXT NOT NULL,
   product_item_id TEXT NOT NULL REFERENCES items(id), batch_output REAL NOT NULL CHECK(batch_output > 0),

@@ -30,6 +30,15 @@ erDiagram
         TEXT fetched_at
     }
 
+    ITEM_IMAGES {
+        TEXT item_id PK
+        TEXT content_type
+        BLOB image_data
+        TEXT sha256
+        TEXT source_url
+        TEXT fetched_at
+    }
+
     RECIPES {
         TEXT id PK
         TEXT label
@@ -169,6 +178,7 @@ erDiagram
 
 - **Catalogue:** `items`, `recipes`, and `recipe_ingredients` describe products and production requirements. Recipe ingredients use a composite primary key `(recipe_id, item_id)`.
 - **Machine images:** `machine_images` stores optional PNGs by station ID. Recipes and images are matched by `station_id` in queries, without a declared foreign key. `npm run images:refresh` can populate the table from a signed-in game browser; the image route serves a stored image when present. The catalogue, graph cards, and Buildings view display available thumbnails.
+- **Item images:** `item_images` stores WebP or PNG artwork by game item ID, including items outside the current recipe snapshot. It has no declared foreign key so catalogue reimports do not remove saved images. The signed-in collector saves images locally; a generated SQL import copies them to production D1. `/api/items/{id}/image` serves them to every item display.
 - **Source tracking:** `source_imports` records imported catalogue snapshots and their revisions. Each recipe and changelog entry points to the import it came from.
 - **Changelog:** entries contain ordered changes, which in turn contain ordered descriptions.
 - **Legacy market feed:** `market_quotes`, `market_quote_history`, and `market_refresh_log` store public reference prices and refresh attempts.

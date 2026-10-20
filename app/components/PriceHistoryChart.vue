@@ -88,7 +88,7 @@ function formatTick(value: string) { return new Date(value).toLocaleString(undef
     <template v-else>
       <div class="history-chart-head">
         <div><span class="history-chart-kicker">SNAPSHOT INSPECTOR</span><strong>{{ formatTime(selectedTime) }}</strong></div>
-        <div class="history-chart-values"><span v-for="line in selectedValues" :key="line.key"><i :style="{ background: line.color }" />{{ line.label }} <strong>{{ formatMoney(line.value) }}</strong></span></div>
+        <div class="history-chart-values"><span v-for="line in selectedValues" :key="line.key"><i :style="{ background: line.color }" /><ItemIcon v-if="!line.key.startsWith('chain:')" :item-id="line.key.split(':')[0]" :name="line.label" />{{ line.label }} <strong>{{ formatMoney(line.value) }}</strong></span></div>
       </div>
       <svg v-if="hasValues" ref="svgRef" class="history-svg" :viewBox="`0 0 ${width} ${height}`" preserveAspectRatio="none" role="img" :aria-label="`Price history chart with ${times.length} recorded times from ${formatTime(times[0])} to ${formatTime(times.at(-1)!)}`" @pointermove="selectFromPointer" @pointerdown="selectFromPointer">
         <defs><linearGradient id="history-area-glow" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#9ed4a4" stop-opacity=".18"/><stop offset="1" stop-color="#9ed4a4" stop-opacity="0"/></linearGradient></defs>
@@ -105,11 +105,12 @@ function formatTick(value: string) { return new Date(value).toLocaleString(undef
       </svg>
       <div v-else class="history-chart-empty">No values were saved for this price side in the selected range. Choose another side or collect a new market snapshot.</div>
       <div v-if="hasValues" class="history-scrub"><span>{{ formatTime(times[0]) }}</span><input v-model.number="selectedIndex" type="range" :min="0" :max="Math.max(0, times.length - 1)" step="1" aria-label="Inspect recorded price time"><span>{{ formatTime(times.at(-1)!) }}</span></div>
-      <div class="history-legend"><span v-for="line in lines" :key="line.key"><i :style="{ background: line.color }" />{{ line.label }}</span><span v-if="forecast" class="forecast-key">┄ One-hour estimate</span></div>
+      <div class="history-legend"><span v-for="line in lines" :key="line.key"><i :style="{ background: line.color }" /><ItemIcon v-if="!line.key.startsWith('chain:')" :item-id="line.key.split(':')[0]" :name="line.label" />{{ line.label }}</span><span v-if="forecast" class="forecast-key">┄ One-hour estimate</span></div>
     </template>
   </div>
 </template>
 
 <style scoped>
 .history-chart{border:1px solid #344437;border-radius:11px;background:radial-gradient(circle at 34% 0%,#213326 0%,#18231c 35%,#151d18 100%);box-shadow:0 18px 40px #0004;overflow:hidden}.history-chart-empty{padding:80px 18px;text-align:center;color:#a8b7aa;font-size:12px}.history-chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;padding:20px 22px 4px}.history-chart-head>div:first-child{display:flex;flex-direction:column;gap:7px}.history-chart-head strong{color:#eef5ee;font-size:14px;font-weight:600}.history-chart-kicker{color:#86a48a;font:9px 'DM Mono',monospace;letter-spacing:.13em}.history-chart-values{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px 16px}.history-chart-values span{display:flex;align-items:center;gap:6px;color:#9eaea0;font-size:10px}.history-chart-values strong{color:#e6eee6;font:10px 'DM Mono',monospace}.history-chart-values i,.history-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none}.history-svg{display:block;width:100%;height:340px;touch-action:none;cursor:crosshair}.history-grid{stroke:#47604c;stroke-opacity:.36;stroke-width:1;vector-effect:non-scaling-stroke;stroke-dasharray:3 5}.history-axis{fill:#91a493;font:12px 'DM Mono',monospace}.history-scrub{display:flex;align-items:center;gap:12px;margin:0 20px;color:#98aa9a;font:9px 'DM Mono',monospace}.history-scrub span{white-space:nowrap}.history-scrub input{flex:1;min-width:0;accent-color:#91c596}.history-legend{display:flex;flex-wrap:wrap;gap:9px 19px;padding:18px 22px 21px;color:#b5c7b7;font-size:10px}.history-legend span{display:inline-flex;align-items:center;gap:6px}.history-legend .forecast-key{color:#d6bf8a}@media(max-width:700px){.history-chart-head{flex-direction:column}.history-chart-values{justify-content:flex-start}.history-svg{height:265px}.history-scrub{gap:6px}.history-scrub span{max-width:72px;overflow:hidden;text-overflow:ellipsis}}
+.history-chart-values .game-item-icon,.history-legend .game-item-icon{--icon-size:18px}
 </style>
