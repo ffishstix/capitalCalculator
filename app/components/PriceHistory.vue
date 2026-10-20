@@ -40,7 +40,7 @@ const sortedQuotes = computed(() => [...props.quotes].sort((a, b) => a.name.loca
 watch(() => [props.initialSymbol, props.quotes.length] as const, () => {
   const requested = props.initialSymbol?.toLowerCase()
   if (requested && quoteBySymbol.value.has(requested)) selectedSymbols.value = [requested]
-  else if (!selectedSymbols.value.length && sortedQuotes.value.length) selectedSymbols.value = [sortedQuotes.value[0].symbol]
+  else if (!selectedSymbols.value.length && sortedQuotes.value[0]) selectedSymbols.value = [sortedQuotes.value[0].symbol]
 }, { immediate: true })
 
 const rootOptions = computed(() => {
@@ -69,7 +69,8 @@ watch([range, requestKey], async () => {
     for (let index = 0; index < symbols.length; index += 100) batches.push(symbols.slice(index, index + 100))
     const responses = await Promise.all(batches.map(batch => $fetch<HistoryResponse>('/api/prices/history', { query: { symbols: batch.join(','), range: range.value } })))
     if (ownRequest !== requestNumber) return
-    history.value = { ...responses[0], series: responses.flatMap(response => response.series) }
+    const first = responses[0]
+    history.value = first ? { ...first, series: responses.flatMap(response => response.series) } : null
   } catch {
     if (ownRequest !== requestNumber) return
     history.value = null
@@ -108,7 +109,7 @@ const itemLines = computed(() => {
     const item = series.find(entry => entry.symbol === symbol)
     if (!item) return null
     const first = item.points.find(point => typeof point[side.value] === 'number' && point[side.value]! > 0)?.[side.value]
-    return { key: `${symbol}:${side.value}`, label: item.name, color: palette[index], points: item.points.map(point => ({
+    return { key: `${symbol}:${side.value}`, label: item.name, color: palette[index % palette.length] ?? '#a8d8aa', points: item.points.map(point => ({
       at: point.at,
       value: selectedSymbols.value.length > 1 && compareScale.value === 'indexed'
         ? point[side.value] === null || !first ? null : (point[side.value]! / first - 1) * 100
@@ -157,10 +158,10 @@ function readableTime(at?: string) { return at ? new Date(at).toLocaleString(und
     <div v-else-if="loading" class="history-empty-state">Loading recorded snapshots…</div>
     <div v-else-if="failure" class="history-empty-state history-error" role="alert">{{ failure }}</div>
     <template v-else>
-      <div class="history-metrics"><div><span>RECORDED TIMES</span><strong>{{ recordedCount }}</strong><small>within the selected range</small></div><div><span>{{ mode === 'item' ? 'LATEST QUOTE' : 'COMPLETE CHAIN POINTS' }}</span><strong>{{ mode === 'item' ? money(latestItemPoint?.[side]) : completeChainPoints }}</strong><small>{{ mode === 'item' ? sideNames[side] : 'all needed bid and ask sides present' }}</small></div><div><span>LATEST SAVED TIME</span><strong class="history-date">{{ readableTime(latestSelectedTime) }}</strong><small>Historical prices are saved at collection time</small></div></div>
+      <div class="history-metrics"><div><span>RECORDED TIMES</span><strong>{{ recordedCount }}</strong><small>within the selected range</small></div><div><span>{{ mode === 'item' ? 'LATEST QUOTE' : 'COMPLETE CHAIN POINTS' }}</span><strong>{{ mode === 'item' ? money(latestItemPoint?.[side]) : completeChainPoints }}</strong><small>{{ mode === 'item' ? sideNames[side] : 'each needed item has a bid or ask' }}</small></div><div><span>LATEST SAVED TIME</span><strong class="history-date">{{ readableTime(latestSelectedTime) }}</strong><small>Historical prices are saved at collection time</small></div></div>
       <PriceHistoryChart :lines="lines" :range="range" :unit="chartUnit" :forecast="forecast" />
       <div v-if="mode === 'item'" class="history-explain"><div><h3>One-hour price estimate</h3><p>Shown only for one item’s best bid when at least 32 recent hourly observations are fresh and a simple trend has beaten a no-change estimate on recent checks.</p></div><label class="history-check"><input v-model="showForecast" type="checkbox"> Show estimate when supported</label><p v-if="forecast" class="history-forecast">Estimated next bid {{ money(forecast.estimate) }} · plausible range {{ money(forecast.low) }}–{{ money(forecast.high) }}. Based on {{ forecast.sampleCount }} recent points; recent average error {{ money(forecast.backtestError) }}.</p><p v-else class="history-unavailable">No reliable estimate for this selection yet. More recent, regular snapshots may make one possible.</p></div>
-      <div v-else class="history-explain"><div><h3>How this chain is priced</h3><p>Output sale rates use recorded best bids. External input rates use recorded best asks at the same snapshot time. A missing side leaves that timestamp's net margin blank. Local what-if prices do not rewrite history.</p></div><div class="history-flow-list"><span v-for="flow in currentFlows.sales" :key="`sale-${flow.id}`"><ItemIcon :item-id="flow.id" :name="flow.name" />↑ {{ flow.name }} · {{ formatAmount(flow.amount) }}/min</span><span v-for="flow in currentFlows.costs" :key="`cost-${flow.id}`"><ItemIcon :item-id="flow.id" :name="flow.name" />↓ {{ flow.name }} · {{ formatAmount(flow.amount) }}/min</span></div><p v-if="recordedCount && !completeChainPoints" class="history-unavailable">There are recorded prices, but no hour has every bid and ask needed for this chain yet.</p></div>
+      <div v-else class="history-explain"><div><h3>How this chain is priced</h3><p>Output sale rates use recorded best bids, or asks as a proxy when a bid is missing. External input rates use recorded best asks, or bids as a proxy when an ask is missing. Both must be absent to leave a chain value blank. Local what-if prices do not rewrite history.</p></div><div class="history-flow-list"><span v-for="flow in currentFlows.sales" :key="`sale-${flow.id}`"><ItemIcon :item-id="flow.id" :name="flow.name" />↑ {{ flow.name }} · {{ formatAmount(flow.amount) }}/min</span><span v-for="flow in currentFlows.costs" :key="`cost-${flow.id}`"><ItemIcon :item-id="flow.id" :name="flow.name" />↓ {{ flow.name }} · {{ formatAmount(flow.amount) }}/min</span></div><p v-if="recordedCount && !completeChainPoints" class="history-unavailable">There are recorded prices, but no hour has a bid or ask for every item this chain needs yet.</p></div>
     </template>
   </div>
 </template>

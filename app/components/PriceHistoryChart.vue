@@ -12,8 +12,10 @@ watch(svgRef, element => {
   resizeObserver?.disconnect()
   if (!element || typeof ResizeObserver === 'undefined') return
   resizeObserver = new ResizeObserver(entries => {
-    width.value = Math.max(320, entries[0].contentRect.width)
-    height.value = entries[0].contentRect.height
+    const entry = entries[0]
+    if (!entry) return
+    width.value = Math.max(320, entry.contentRect.width)
+    height.value = entry.contentRect.height
   })
   resizeObserver.observe(element)
 }, { flush: 'post' })
@@ -60,9 +62,9 @@ function markers(points: Point[]) {
 const ticks = computed(() => Array.from({ length: 5 }, (_, index) => domain.value.min + (domain.value.max - domain.value.min) * index / 4))
 const timeTicks = computed(() => {
   const count = Math.min(width.value < 550 ? 3 : 5, times.value.length)
-  return Array.from({ length: count }, (_, index) => times.value[Math.round((times.value.length - 1) * index / (count - 1 || 1))])
+  return Array.from({ length: count }, (_, index) => times.value[Math.round((times.value.length - 1) * index / (count - 1 || 1))]).filter((value): value is string => value !== undefined)
 })
-const selectedTime = computed(() => times.value[Math.min(selectedIndex.value, times.value.length - 1)])
+const selectedTime = computed(() => times.value[Math.min(selectedIndex.value, times.value.length - 1)] ?? '')
 const selectedValues = computed(() => props.lines.map(line => ({ ...line, value: line.points.find(point => point.at === selectedTime.value)?.value ?? null })))
 const forecastOrigin = computed(() => props.lines.find(line => line.key.endsWith(':bid'))?.points.findLast(point => point.value !== null))
 function selectFromPointer(event: PointerEvent) {
@@ -72,7 +74,7 @@ function selectFromPointer(event: PointerEvent) {
   let best = 0
   let distance = Infinity
   for (let i = 0; i < times.value.length; i++) {
-    const delta = Math.abs(x(times.value[i]) - pointX)
+    const delta = Math.abs(x(times.value[i] ?? '') - pointX)
     if (delta < distance) { distance = delta; best = i }
   }
   selectedIndex.value = best
@@ -90,7 +92,7 @@ function formatTick(value: string) { return new Date(value).toLocaleString(undef
         <div><span class="history-chart-kicker">SNAPSHOT INSPECTOR</span><strong>{{ formatTime(selectedTime) }}</strong></div>
         <div class="history-chart-values"><span v-for="line in selectedValues" :key="line.key"><i :style="{ background: line.color }" /><ItemIcon v-if="!line.key.startsWith('chain:')" :item-id="line.key.split(':')[0]" :name="line.label" />{{ line.label }} <strong>{{ formatMoney(line.value) }}</strong></span></div>
       </div>
-      <svg v-if="hasValues" ref="svgRef" class="history-svg" :viewBox="`0 0 ${width} ${height}`" preserveAspectRatio="none" role="img" :aria-label="`Price history chart with ${times.length} recorded times from ${formatTime(times[0])} to ${formatTime(times.at(-1)!)}`" @pointermove="selectFromPointer" @pointerdown="selectFromPointer">
+      <svg v-if="hasValues" ref="svgRef" class="history-svg" :viewBox="`0 0 ${width} ${height}`" preserveAspectRatio="none" role="img" :aria-label="`Price history chart with ${times.length} recorded times from ${formatTime(times[0] ?? '')} to ${formatTime(times.at(-1) ?? '')}`" @pointermove="selectFromPointer" @pointerdown="selectFromPointer">
         <defs><linearGradient id="history-area-glow" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#9ed4a4" stop-opacity=".18"/><stop offset="1" stop-color="#9ed4a4" stop-opacity="0"/></linearGradient></defs>
         <g v-for="tick in ticks" :key="tick"><line :x1="plot.left" :x2="width - plot.right" :y1="y(tick)" :y2="y(tick)" class="history-grid"/><text :x="plot.left - 12" :y="y(tick) + 4" text-anchor="end" class="history-axis">{{ unit === '%' ? `${tick.toLocaleString(undefined, { maximumFractionDigits: 1 })}%` : `${unit}${tick.toLocaleString(undefined, { maximumFractionDigits: 2 })}` }}</text></g>
         <g v-for="(tick, index) in timeTicks" :key="index"><text :x="x(tick)" :y="height - 17" :text-anchor="index === 0 ? 'start' : index === timeTicks.length - 1 ? 'end' : 'middle'" class="history-axis">{{ formatTick(tick) }}</text></g>
@@ -104,7 +106,7 @@ function formatTick(value: string) { return new Date(value).toLocaleString(undef
         <g v-for="line in selectedValues" :key="line.key"><circle v-if="line.value !== null" :cx="x(selectedTime)" :cy="y(line.value)" r="5" fill="#142018" :stroke="line.color" stroke-width="3" vector-effect="non-scaling-stroke"/></g>
       </svg>
       <div v-else class="history-chart-empty">No values were saved for this price side in the selected range. Choose another side or collect a new market snapshot.</div>
-      <div v-if="hasValues" class="history-scrub"><span>{{ formatTime(times[0]) }}</span><input v-model.number="selectedIndex" type="range" :min="0" :max="Math.max(0, times.length - 1)" step="1" aria-label="Inspect recorded price time"><span>{{ formatTime(times.at(-1)!) }}</span></div>
+      <div v-if="hasValues" class="history-scrub"><span>{{ formatTime(times[0] ?? '') }}</span><input v-model.number="selectedIndex" type="range" :min="0" :max="Math.max(0, times.length - 1)" step="1" aria-label="Inspect recorded price time"><span>{{ formatTime(times.at(-1) ?? '') }}</span></div>
       <div class="history-legend"><span v-for="line in lines" :key="line.key"><i :style="{ background: line.color }" /><ItemIcon v-if="!line.key.startsWith('chain:')" :item-id="line.key.split(':')[0]" :name="line.label" />{{ line.label }}</span><span v-if="forecast" class="forecast-key">┄ One-hour estimate</span></div>
     </template>
   </div>

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
+    "typecheck": "nuxt typecheck",
     "preview": "nuxt preview",
     "db:import": "node scripts/import-data.mjs",
     "prices:login": "node scripts/market-price-sync.mjs login",
