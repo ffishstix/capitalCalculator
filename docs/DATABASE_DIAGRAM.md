@@ -177,7 +177,7 @@ erDiagram
 ## Table groups
 
 - **Catalogue:** `items`, `recipes`, and `recipe_ingredients` describe products and production requirements. Recipe ingredients use a composite primary key `(recipe_id, item_id)`.
-- **Machine images:** `machine_images` stores optional PNGs by station ID in local SQLite. `npm run images:refresh` collects them, then `npm run images:export` copies known stations into `public/machines` for Pages. The image route redirects those stations to static PNGs and can fall back to a database image.
+- **Machine images:** `machine_images` stores PNGs by station ID. `npm run refresh:all` collects and uploads them with market data when the game bundle changes. The image route serves current D1 data, with previously exported static PNGs as a fallback.
 - **Item images:** `item_images` stores WebP or PNG artwork by game item ID, including items outside the current recipe snapshot. It has no declared foreign key so catalogue reimports do not remove saved images. The signed-in collector saves images locally; a generated SQL import copies them to production D1. The verified D1 database holds 353 images, and `/api/items/{id}/image` serves them across the planner.
 - **Source tracking:** `source_imports` records imported catalogue snapshots and their revisions. Each recipe and changelog entry points to the import it came from.
 - **Changelog:** entries contain ordered changes, which in turn contain ordered descriptions.

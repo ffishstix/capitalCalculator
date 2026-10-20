@@ -130,11 +130,12 @@ Recipe import (reviewed source JSON)
   --> GET /api/recipes and GET /api/meta
   --> catalogue, targets, calculations, and catalogue age in browser
 
-Signed-in game browser + local market collector
+Signed-in game browser + one local collector
   --> game ticker reference prices + per-item order books
-  --> token-protected POST /api/prices/sync on Pages
+  --> current game bundle; reuse unchanged local item/machine images
+  --> one token-protected POST /api/refresh on Pages
       (validation, hourly cooldown, sync log)
-  --> current quotes/books + hourly history in D1 (90-day retention)
+  --> current quotes/books + hourly history + changed artwork in D1
   --> GET /api/prices
   --> Prices table, graph labels, plan economics, recipe optimizer
   --> GET /api/prices/history for selected symbols and time window
@@ -142,23 +143,23 @@ Signed-in game browser + local market collector
 
 ```
 
-**The website's reload button does not run the signed-in collector.** The collector is a separate command documented in [market-sync.md](market-sync.md); the manual bookmarklet is available for local imports only. A normal server request to the game's authenticated ticker cannot use the user's game login.
+**The website's reload button does not run the signed-in collector.** The local `npm run refresh:all` command is documented in [market-sync.md](market-sync.md). It collects market data and game artwork in one minimized Chrome run, then makes one upload to the site. A normal server request to the game's authenticated ticker cannot use the user's game login.
 
 ## How images reach the page
 
 ```text
-Signed-in game browser
-  +--> machine image refresh --> local SQLite --> static export
-  |      --> public/machines/*.png in the Pages build
-  +--> item image refresh --> local SQLite --> generated D1 SQL import
-         --> GET /api/items/{id}/image on Pages
+Signed-in game browser + local cached artwork
+  --> same JSON upload as market data when the game bundle changes
+  --> item_images and machine_images in D1
+  --> GET /api/items/{id}/image and /api/machines/{station}/image
+  --> previously exported public/machines/*.png only as a fallback
 
 Recipe API provides image URLs when a saved image exists
   --> item artwork in catalogue, graph, targets, tables, and History
   --> machine thumbnails on graph cards and in Buildings
 ```
 
-Both refresh paths are manual. A catalogue or game-art update needs a separate image coverage check and redeployment or D1 import as appropriate.
+The one collector is manual. A changed game bundle triggers an artwork coverage check and upload in the same request. Recipe catalogue imports remain a separate reviewed operation.
 
 ## Decision points and limits
 

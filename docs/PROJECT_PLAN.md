@@ -41,8 +41,8 @@ For the current website's screen-by-screen behavior, see [Website guide](WEBSITE
 - Read the game page's `GET /api/market/ticker` in the user's signed-in browser. It returned 349 item prices; a direct server-side request without the browser session returned `401 Unauthorized`.
 - Imported a current ticker snapshot into SQLite with 349 market item rows; all 346 catalogue item IDs matched. Quote identifiers are lowercased and mapped to catalogue display names.
 - Added `market_item_quotes`, `market_item_quote_history`, and `market_item_sync_log`. Imports retain 90 days of history and are limited to one per hour.
-- Added a local sync receiver, a CLI browser-login/refresh flow, and a credential-free bookmarklet. The CLI launches a dedicated Chrome profile for Google sign-in, reads ticker and item order books through authenticated page requests, and posts only the price payload to the local planner; Google credentials and browser cookies are never copied into the planner. The bookmarklet remains available for manual one-time refreshes.
-- Added a token-protected Pages sync receiver. A full `npm run prices:refresh:cloud` run succeeded on 2026-10-20 and saved all 349 order books to D1. The bookmarklet remains a local-only tool.
+- The browser login command opens a dedicated Chrome profile for user-completed Google sign-in. The single `npm run refresh:all` command collects prices and artwork in that minimized browser, then posts one JSON payload to the token-protected Pages receiver. The older separate refresh commands and bookmarklet were retired; Google credentials and browser cookies are never copied into the planner.
+- The original price-only receiver successfully saved all 349 order books on 2026-10-20. The combined `/api/refresh` receiver replaces it and accepts prices and images together, with a one-hour cooldown.
 - The ticker's `price` is a reference value, not executable market pricing. The signed-in game currently exposes per-item order books with bids and asks; the Prices table distinguishes the lowest ask (quick buy), highest bid (instant sell), and a suggested one-cent-under-ask offer. Plastic Pellets was verified in the live market at a $1,299.99 best ask and $40.02 best bid during this review.
 - Profit values each produced item at its highest current buy bid, then subtracts each purchased ingredient at its lowest current sell ask. If the needed book side is absent, the opposite side is used as a clearly marked proxy. The graph and plan economics can use a labelled ticker reference estimate when both book sides are absent; the optimizer requires an order-book side or a local override.
 - The game ticker includes a day-change percentage but no item trading-volume figure. The Prices table no longer presents missing ticker volume as zero.
@@ -75,13 +75,13 @@ For the current website's screen-by-screen behavior, see [Website guide](WEBSITE
 
 ### 3. Make live pricing dependable
 
-- `npm run prices:login` opens standard Chrome directly (without Playwright launch flags) for user-completed Google sign-in. The collector attaches through Chrome's local debugging port and persists the session in an ignored local browser profile. `npm run prices:refresh` reuses the same browser/profile, minimizes Chrome, fetches each book sequentially at one request per second, sends only ticker/order-book data to the planner receiver, then closes Chrome.
-- Decide whether this computer can reliably run `npm run prices:refresh:cloud` each hour. No recurring job is configured. If the game session expires, run the login command again; the collector does not automate Google authentication or extract cookies.
+- `npm run prices:login` opens standard Chrome directly for user-completed Google sign-in. `npm run refresh:all` reuses that profile, minimizes Chrome, fetches each book sequentially at one request per second, reuses unchanged local artwork, uploads one JSON payload, then closes Chrome. The old price-only and separate image refresh commands are removed.
+- The one-command collector is manual; no recurring job is configured. Its local success marker and the receiver's one-hour cooldown prevent accidental repeat uploads. If the game session expires, run the login command again; the collector does not automate Google authentication or extract cookies.
 - Order books expose best bid/ask and visible quantities, but do not guarantee that a new sell offer fills. A one-cent-under-ask suggestion is only a pricing aid. The game ticker lacks item volume; fees and fill behavior remain unmodeled.
 - Confirm price currency/unit basis, endpoint stability, and public reuse terms. User reports written developer permission for this read-only use; record confirmation of production and public distribution scope separately.
 - Keep plan valuation limited to known quotes and clearly mark incomplete input/output coverage.
 - The app reports the last sync outcome and serves saved quotes; a production failure or stale-data alert remains unconfigured.
-- The Prices page names the available CLI and bookmarklet collection paths. Current valuations mark opposite-side and ticker-reference proxies; a missing item quote still leaves a figure incomplete.
+- The Prices page reloads saved data; the CLI performs collection. Current valuations mark opposite-side and ticker-reference proxies; a missing item quote still leaves a figure incomplete.
 - **Remaining:** establish a repeatable refresh schedule and stale-data alert, confirm the permitted production request cadence and reuse terms, and check whether the four books with no bid or ask are intentionally untradeable. More hourly observations are needed before long-range charts and forecasts can be judged. A scheduled Cloudflare Worker is a candidate, but the game's authenticated ticker currently returns 401 to server-side requests without a game session. Obtain a supported read-only credential or decide how to host and renew a browser session before implementing the collector. The existing receiver token authenticates uploads to this site; it does not authenticate requests to the game.
 
 ### 4. Keep price history accurate as snapshots accumulate
@@ -137,7 +137,7 @@ For the current website's screen-by-screen behavior, see [Website guide](WEBSITE
 | 5 | Production-chain rules, browser accessibility, mobile layout, and large-plan responsiveness have not been owner-reviewed in representative game and browser sessions. | Record a small acceptance suite with expected in-game outputs and browser results. |
 | 6 | Recipe data and game artwork are publicly served while reuse and attribution terms remain open. | Record the exact permissions and required attribution, then update or replace content as needed. |
 
-The item-image work was deployed during this review. Its collection and D1 import are still manual, so catalogue or game-art updates need an explicit image refresh and coverage check.
+The item-image work was deployed during this review. The combined manual collector now checks game-art coverage and uploads changed artwork in the same request as market data. The separate reviewed recipe catalogue import remains manual.
 
 ## Suggested additions after the gaps above
 

@@ -19,7 +19,7 @@ let localDatabase: import('better-sqlite3').Database | undefined
 async function local() {
   if (!localDatabase) {
     const { default: Database } = await import('better-sqlite3')
-    localDatabase = new Database(join(process.cwd(), 'database', 'capitalrift.sqlite'))
+    localDatabase = new Database(process.env.CAPITALRIFT_DB_PATH || join(process.cwd(), 'database', 'capitalrift.sqlite'))
     localDatabase.pragma('foreign_keys = ON')
     localDatabase.pragma('journal_mode = WAL')
     localDatabase.exec(readFileSync(join(process.cwd(), 'database', 'schema.sql'), 'utf8'))
@@ -48,6 +48,7 @@ const localClient: DatabaseClient = {
 }
 
 export function getDatabase(event: H3Event): DatabaseClient {
+  if (process.env.CAPITALRIFT_DB_PATH) return localClient
   const cloudflare = event.context.cloudflare as { env?: { DB?: DatabaseClient } } | undefined
   return cloudflare?.env?.DB ?? localClient
 }

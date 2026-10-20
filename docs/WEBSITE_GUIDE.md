@@ -93,11 +93,11 @@ The chart history depends on separate market collection. An empty plan has no ch
 | `GET /api/meta` | Returns the latest catalogue import's date, source, counts, and digest. |
 | `GET /api/prices` | Returns saved current quotes, short trend arrays, coverage, source, and refresh status. It does not start a game or public-feed refresh. |
 | `GET /api/prices/history?symbols=...&range=...` | Returns ordered timestamped ticker reference, best-bid, and best-ask points for 1–100 unique item symbols. The range is `24h`, `7d`, `30d` (default), or `90d`; an absent value is `null`, never interpolated. Public reference history is a fallback only for a symbol without a saved game ticker quote. Unknown symbols have an empty series. |
-| `POST /api/prices/sync` | Receives a validated signed-in ticker and optional order books. The deployed endpoint requires the private sync token and normally accepts one update per hour. A local browser bookmarklet can post only to a local planner. It is not a page control. |
+| `POST /api/refresh` | Receives one validated JSON payload with the signed-in ticker, order books, and any changed item and machine images. The deployed endpoint requires the private sync token and accepts at most one update per hour. It is called by the local collector, not a page control. |
 | `GET /api/machines/{station}/image` | Redirects known stations to exported static PNGs, with a database fallback. The catalogue, graph cards, and Buildings view display available thumbnails. |
 | `GET /api/items/{id}/image` | Serves saved item artwork from D1 on Pages or SQLite locally. Item labels use an initial when artwork is unavailable. |
 
-Local development uses `database/schema.sql` to create missing SQLite tables. Production Pages Functions use the D1 binding described in `wrangler.toml`. The [database diagram](DATABASE_DIAGRAM.md) covers current and historical price tables, catalogue imports, and images. `npm run images:refresh` plus `npm run images:export` prepares machine PNGs for Pages; the item-image collector and D1 import are separate manual steps. Image use and redistribution terms still need review for the live site.
+Local development uses `database/schema.sql` to create missing SQLite tables. Production Pages Functions use the D1 binding described in `wrangler.toml`. The [database diagram](DATABASE_DIAGRAM.md) covers current and historical price tables, catalogue imports, and images. `npm run refresh:all` collects prices and artwork in one minimized Chrome run, then sends one JSON upload; unchanged game artwork is reused. Image use and redistribution terms still need review for the live site.
 
 ## Saving, data, and failures
 

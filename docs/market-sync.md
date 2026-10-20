@@ -1,55 +1,38 @@
-# Command-line market price sync
+# One-command game refresh
 
-This is the collection process behind the website's Prices view. For what visitors see, use the [website guide](WEBSITE_GUIDE.md); for the full step-by-step journey, use the [website flow](WEBSITE_FLOW.md).
-
-Capital Rift's market endpoints require its own signed-in game session. A plain Node `fetch` or `curl` request does not inherit Google sign-in, so the CLI uses a dedicated local Chrome profile and makes the API calls from that browser. Chrome is started directly as a regular browser, then the collector attaches to its local debugging connection; it does not use Playwright to launch Chrome or add `--no-sandbox`. Google sign-in remains in Google's normal browser page: the CLI never requests, reads, or saves your Google password.
+The website reads saved prices and game artwork from Cloudflare D1. Run the collector on this computer when new data is needed. It uses a dedicated, signed-in Chrome profile; Chrome is minimized during collection and closes afterward. One JSON request uploads the collected market snapshot and any changed game artwork to `POST /api/refresh`.
 
 ## First-time setup
 
-1. Install project dependencies with `npm install`.
-2. Start the planner in one terminal with `npm run dev` and leave it running at `http://localhost:3000`.
-3. In another terminal, run `npm run prices:login`.
-4. Chrome opens Capital Rift. Complete Google sign-in in that window. The CLI waits until the game ticker endpoint confirms that the session is active. Chrome remains open and the session is stored in `.capitalrift-session-profile/`.
-5. Run `npm run prices:refresh`. It attaches to the open Chrome profile (or opens regular Chrome minimized with that profile if it is closed), reads the ticker and requests each item's order book sequentially with a one-second delay, then posts the collected price data to the local planner. Once the run completes, Chrome closes; the signed-in profile remains saved for the next run.
+1. Install dependencies with `npm install`.
+2. Keep the ignored `.env` with `PRICE_SYNC_TOKEN` matching the Pages secret. The existing `PLANNER_SYNC_URL` may point to the retired `/api/prices/sync` path; the collector always uses `/api/refresh` on the same origin.
+3. Run `npm run prices:login`. Complete Google sign-in in the normal Chrome window. The collector verifies the game ticker, then leaves Chrome open for you to close. It does not request or copy a password or session cookie.
+4. Run `npm run refresh:all`. The collector opens the saved profile minimized, gathers the data, uploads one JSON payload, writes an ignored local success marker, and closes Chrome. If the game session has expired, sign in again with `npm run prices:login`.
 
-The browser profile is local and gitignored. It stores the website session as Chrome normally does; no cookie is printed, copied to `.env`, or sent to the planner. Chrome uses local debugging port `9228` so the collector can attach to the same browser; set `CAPITALRIFT_CHROME_DEBUG_PORT` if that port is already in use. If the game session expires, run `npm run prices:login`, finish signing in through the visible Chrome window, then rerun refresh.
+The browser session stays in `.capitalrift-session-profile/`, which is ignored by Git. The local success marker is `.tmp/refresh-last-success.json`. A repeat run within one hour stops before opening Chrome; the receiver also enforces one hour between successful attempts. There is no recurring Windows task or Cloudflare Cron Trigger. The old separate price, machine-image, item-image, SQL-export, and bookmarklet refresh commands have been retired. Saved price history is retained.
 
-## Hourly schedule
+## What the single run collects
 
-For the deployed Pages site, run `npm run prices:refresh:cloud` from this computer after signing in. Its ignored `.env` points to `https://fishstix.uk/api/prices/sync` and contains the matching Pages `PRICE_SYNC_TOKEN` secret. Schedule this command hourly only if this computer and its signed-in Chrome profile will remain available. For local development, use `npm run prices:refresh` with `npm run dev` running. The job is one-shot, minimizes Chrome while collecting data, closes it after saving, and exits. Order-book requests default to a one-second pause; set `CAPITALRIFT_REQUEST_DELAY_MS` to change it (50 ms was tested successfully for all 349 books). If the hourly cooldown needs a deliberate one-run override, use `npm run prices:refresh -- --bypass`.
+- The signed-in game ticker and each item's order book. The game build calls `/market/book?commodity=...` for one commodity at a time; no bulk book route was found in the inspected client code. The collector therefore still makes per-item **game reads**, paced one second apart by default. Set `CAPITALRIFT_REQUEST_DELAY_MS` only if the game's allowed request cadence is confirmed.
+- The current game bundle and its item and machine image references. Valid local image copies are reused. If the bundle URL is unchanged since the last successful upload, no images are fetched or uploaded. On the first combined run or a changed bundle, the payload includes all validated catalogue item and machine images. Furniture PNGs are reduced to WebP for D1.
+- A single upload to the planner. The receiver validates the ticker, books, image IDs, formats, checksums, and catalogue coverage, then updates market and image tables together. The site never receives the Chrome profile, Google credentials, or game session cookies. The server token authenticates uploads to this site only.
 
-The deployed receiver requires `PRICE_SYNC_TOKEN` in the request header. Keep the local `.env` private. The bookmarklet is for local imports only; it cannot post directly to Pages without the token.
+The Pages endpoint accepts one combined request and batches its D1 queries. It uses bounded image groups so a full artwork upload stays within D1's per-query size and query-count limits. Existing machine PNGs in `public/machines` remain a fallback until current machine images are present in D1. Item and machine image URLs are served from D1 after upload.
 
-## What it stores
+## Checking the result
 
-The receiver stores ticker reference prices in `market_item_quotes`, current bid/ask data in `market_item_order_books`, hourly snapshots in the market history tables, and run outcomes in `market_item_sync_log`. History is retained for 90 days. The sync only reads prices; it does not place trades.
+`npm run refresh:all` prints the number of books and images accepted. The public Prices page shows the saved quote time and order-book coverage. The **Check for due update** button only reloads saved data; it does not run the collector. You can also inspect `GET /api/prices`, `GET /api/prices/history`, and the item and machine image URLs. Raw bid/ask history keeps missing sides; only displayed valuations use the opposite side as a proxy.
 
-The **Check for due update** button on the website reloads prices from the planner server. It does not launch this command, sign in to the game, or trigger a browser order-book collection. The game item ticker has no item trading volume; the website leaves that field unavailable for game item quotes. Current 30-day trend lines use saved best bids and need at least two snapshots.
+If the upload fails, no success marker is written. A retry may reuse images already collected locally. If Pages returns HTTP 429, wait until the server's one-hour cooldown passes. To force a complete artwork upload after the cooldown, remove only `.tmp/refresh-last-success.json`; do not remove the saved Chrome profile or price history.
 
-The **History** section within Prices reads the saved hourly snapshots through `GET /api/prices/history`; it does not start a sync. Choose a 24-hour, 7-day, 30-day, or 90-day view and move the time slider to inspect what was actually collected. Individual item charts show recorded ticker reference, best bid, and best ask without filling their gaps. Current-plan and selected-output chain valuations use saved bids for sale value and asks for external input costs, expressed per minute. If the needed side is absent, the valuation uses the opposite book side as a proxy at that same timestamp; if both are absent, that flow is incomplete. The optional next-hour item bid estimate still uses actual bids only. See the [History guide](WEBSITE_GUIDE.md#history-inside-prices) for controls and limits.
+## Hosting the collector later
 
-## Moving collection off this computer
-
-A separate Cloudflare Worker could run hourly with a [Cron Trigger](https://developers.cloudflare.com/workers/configuration/cron-triggers/), fetch the game ticker and per-item books, and post the existing payload to `/api/prices/sync` using the Pages `PRICE_SYNC_TOKEN` secret. The current collector needs a signed-in game session, and an unauthenticated server request to the ticker returned HTTP 401 on 2026-10-20. A Worker does not inherit the local Chrome profile. The preferred next step is to ask the game operator for a supported read-only API credential or service-account flow and confirm the allowed request cadence. If one is available, move collection to a scheduled Worker, store credentials as [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/), keep the existing receiver validation and cooldown, and alert on stale or partial updates. Around 349 book requests per run also need sufficient [outbound subrequest allowance](https://developers.cloudflare.com/workers/platform/limits/) or batching supported by the game API; Workers Free currently allows 50 subrequests per invocation and Workers Paid 10,000.
-
-[Cloudflare Browser Run](https://developers.cloudflare.com/browser-run/playwright/) can automate a remote browser and persist browser storage, but that would require moving or creating a signed-in game session in Cloudflare storage and managing expiry and renewed Google sign-in. Its [free browser allowance](https://developers.cloudflare.com/browser-run/limits/) is currently 10 minutes per day, so an hourly run using the collector's one-second delay across roughly 349 books would not fit. Do not copy the current local session into a Worker without an explicit decision to change the user-controlled sign-in approach. A hosted browser service or small server is another option if the game has no service credential, but it has the same session-management issue. No hosted collector is deployed yet; the current cloud refresh still runs from this computer.
-
-The one-time signed-in browser bookmarklet is still available at [`templates/capitalrift-market-sync-bookmarklet.txt`](../templates/capitalrift-market-sync-bookmarklet.txt) for local manual imports.
-
-## Machine images
-
-After signing in, run `npm run images:refresh` to collect the game build's 22 machine PNG thumbnails. The command uses the same local Chrome profile to discover current versioned asset URLs, checks that every planner machine has one valid PNG, then saves the images and their source URLs in SQLite in one transaction. Run `npm run images:export` after refreshing to copy the thumbnails into `public/machines` for the next Pages build. Visitors then receive static PNGs without game credentials. If discovery or a download fails, the previous set stays in the database. These are machine thumbnails, not 3D models or material textures. Confirm artwork redistribution terms for the live site.
-
-## Item images
-
-Run `npm run items:images:refresh` with the saved signed-in Chrome profile to collect current inventory icons and furniture thumbnails. The refresh checks that every catalogue item has an image, validates each download, and saves the complete set to local SQLite in one transaction. Small inlined game icons are decoded from the current bundle; furniture PNGs are resized to WebP for the planner's item displays. The collector currently finds 353 image sources, including all 346 catalogue items and the three additional market tickers.
-
-Run `npm run items:images:export:d1`, then `npx wrangler d1 execute capitalrift-db --remote --file .tmp/item-images-d1.sql --yes` to update the production D1 table. The Pages API serves each saved item image from D1 with an ETag. If the game session expires, use `npm run prices:login` to sign in again; the collector never stores a password or copies cookies.
+The game's authenticated ticker returned HTTP 401 to an unsigned server request on 2026-10-20. A Cloudflare Worker cannot inherit this computer's Chrome session. A supported read-only game API credential would allow an hourly [Cron Trigger](https://developers.cloudflare.com/workers/configuration/cron-triggers/) and [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/) to replace the local collector. The current 349 per-item game requests would exceed the [Workers Free limit of 50 subrequests per invocation](https://developers.cloudflare.com/workers/platform/limits/) unless the game offers a bulk endpoint. Remote browser automation would also require a separate signed-in session and enough [Browser Run allowance](https://developers.cloudflare.com/browser-run/limits/). No hosted collector is configured.
 
 ## Troubleshooting
 
-- **Chrome does not open:** install Google Chrome, then retry `npm run prices:login`.
-- **Ticker returns 401:** run `npm run prices:login` and complete Google sign-in in the opened Chrome window.
-- **Planner returns 429:** wait for the hourly cooldown or make one deliberate `--bypass` run.
-- **A different planner address is needed:** set `PLANNER_SYNC_URL` to its `/api/prices/sync` endpoint and configure a matching `PRICE_SYNC_TOKEN` secret on that host.
-- If you previously added `CAPITALRIFT_SESSION_COOKIE` to `.env` for the retired worker, remove it. This CLI does not use that value.
+- **Chrome does not open:** install Google Chrome or set `CHROME_PATH` to its executable.
+- **Ticker returns 401:** run `npm run prices:login` and complete sign-in in the opened Chrome window.
+- **Upload returns 403:** check that `.env` has the current `PRICE_SYNC_TOKEN` and the Pages secret matches.
+- **Upload returns 429:** wait until one hour after the previous server attempt.
+- **A different planner address is needed:** set `PLANNER_SYNC_URL` to that site's origin or old sync URL; the collector uses its `/api/refresh` route.
