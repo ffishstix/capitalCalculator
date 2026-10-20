@@ -20,7 +20,7 @@ const LOGIN_WAIT_MS = 10 * 60 * 1_000
 const LOGIN_POLL_MS = 10_000
 const DEBUGGING_PORT = Number(process.env.CAPITALRIFT_CHROME_DEBUG_PORT || 9228)
 const DEBUGGING_URL = `http://127.0.0.1:${DEBUGGING_PORT}`
-const IMAGE_DB = resolve(PROJECT_ROOT, 'database/capitalrift.sqlite')
+const IMAGE_DB = resolve(PROJECT_ROOT, '.tmp/game-image-cache.sqlite')
 const LAST_SUCCESS_FILE = resolve(PROJECT_ROOT, '.tmp/refresh-last-success.json')
 const catalogue = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'data/source/factory-catalog.json'), 'utf8'))
 const catalogIds = Object.keys(catalogue.items).sort()
@@ -224,6 +224,11 @@ function machineSources(bundle) {
 async function collectImages(bundle, bundleUrl) {
   const itemMap = itemSources(bundle, bundleUrl)
   const machineMap = machineSources(bundle)
+  if (!existsSync(IMAGE_DB)) {
+    await mkdir(dirname(IMAGE_DB), { recursive: true })
+    const seed = new Database(resolve(PROJECT_ROOT, 'database/capitalrift.sqlite'), { readonly: true })
+    try { await seed.backup(IMAGE_DB) } finally { seed.close() }
+  }
   const db = new Database(IMAGE_DB)
   try {
     db.exec(readFileSync(resolve(PROJECT_ROOT, 'database/schema.sql'), 'utf8'))

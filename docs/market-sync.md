@@ -9,7 +9,7 @@ The website reads saved prices and game artwork from Cloudflare D1. Run the coll
 3. Run `npm run prices:login`. Complete Google sign-in in the normal Chrome window. The collector verifies the game ticker, then leaves Chrome open for you to close. It does not request or copy a password or session cookie.
 4. Run `npm run refresh:all`. The collector opens the saved profile minimized, gathers the data, uploads one JSON payload, writes an ignored local success marker, and closes Chrome. If the game session has expired, sign in again with `npm run prices:login`.
 
-The browser session stays in `.capitalrift-session-profile/`, which is ignored by Git. The local success marker is `.tmp/refresh-last-success.json`. A repeat run within one hour stops before opening Chrome; the receiver also enforces one hour between successful attempts. There is no recurring Windows task or Cloudflare Cron Trigger. The old separate price, machine-image, item-image, SQL-export, and bookmarklet refresh commands have been retired. Saved price history is retained.
+The browser session stays in `.capitalrift-session-profile/`, which is ignored by Git. Validated image copies live in the ignored `.tmp/game-image-cache.sqlite`; the tracked development database is not changed by this command. The local success marker is `.tmp/refresh-last-success.json`. A repeat run within one hour stops before opening Chrome; the receiver also enforces one hour between successful attempts. There is no recurring Windows task or Cloudflare Cron Trigger. The old separate price, machine-image, item-image, SQL-export, and bookmarklet refresh commands have been retired. Saved price history is retained.
 
 ## What the single run collects
 
