@@ -45,7 +45,7 @@ export function traceOutputChain(rootId, nodes, connections, recipesById) {
   }
 }
 
-/** Join recorded quotes on their exact snapshot hour. Missing sides stay null. */
+/** Join recorded quotes on their exact snapshot hour; use the opposite book side when one side is absent. */
 export function calculateHistoricalEconomics(series, flows) {
   const indexed = new Map(series.map(item => [item.symbol, new Map(item.points.map(point => [point.at, point]))]))
   const symbols = new Set([...flows.sales, ...flows.costs].filter(flow => flow.amount > 0).map(flow => flow.id))
@@ -55,7 +55,8 @@ export function calculateHistoricalEconomics(series, flows) {
       let value = 0
       for (const row of rows) {
         if (row.amount <= 0) continue
-        const price = indexed.get(row.id)?.get(at)?.[side]
+        const point = indexed.get(row.id)?.get(at)
+        const price = point?.[side] ?? point?.[side === 'bid' ? 'ask' : 'bid']
         if (typeof price !== 'number' || !Number.isFinite(price)) return null
         value += price * row.amount
       }

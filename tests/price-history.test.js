@@ -66,18 +66,20 @@ test('a connected producer passes its own input cost through to the selected out
   assert.deepEqual(flows.costs, [{ id: 'ore_item', name: 'Ore', amount: 12 }])
 })
 
-test('historical economics leaves missing quote sides unknown at each exact hour', () => {
+test('historical economics uses the opposite book side only when the requested side is absent', () => {
   const series = [
     { symbol: 'widget', points: [
       { at: '2026-10-20T09:00:00Z', bid: 10, ask: null },
       { at: '2026-10-20T10:00:00Z', bid: 11, ask: null },
-      { at: '2026-10-20T11:00:00Z', bid: null, ask: 99 }
+      { at: '2026-10-20T11:00:00Z', bid: null, ask: 99 },
+      { at: '2026-10-20T14:00:00Z', bid: 12, ask: 13 }
     ] },
     { symbol: 'ore', points: [
       { at: '2026-10-20T09:00:00Z', bid: null, ask: 3 },
       { at: '2026-10-20T10:00:00Z', bid: null, ask: null },
       { at: '2026-10-20T11:00:00Z', bid: 99, ask: 4 },
-      { at: '2026-10-20T12:00:00Z', bid: null, ask: 5 }
+      { at: '2026-10-20T12:00:00Z', bid: null, ask: 5 },
+      { at: '2026-10-20T14:00:00Z', bid: 6, ask: null }
     ] },
     { symbol: 'unrelated', points: [{ at: '2026-10-20T13:00:00Z', bid: 100, ask: 100 }] }
   ]
@@ -89,8 +91,9 @@ test('historical economics leaves missing quote sides unknown at each exact hour
   assert.deepEqual(calculateHistoricalEconomics(series, flows), [
     { at: '2026-10-20T09:00:00Z', sales: 20, costs: 9, net: 11 },
     { at: '2026-10-20T10:00:00Z', sales: 22, costs: null, net: null },
-    { at: '2026-10-20T11:00:00Z', sales: null, costs: 12, net: null },
-    { at: '2026-10-20T12:00:00Z', sales: null, costs: 15, net: null }
+    { at: '2026-10-20T11:00:00Z', sales: 198, costs: 12, net: 186 },
+    { at: '2026-10-20T12:00:00Z', sales: null, costs: 15, net: null },
+    { at: '2026-10-20T14:00:00Z', sales: 24, costs: 18, net: 6 }
   ])
 })
 

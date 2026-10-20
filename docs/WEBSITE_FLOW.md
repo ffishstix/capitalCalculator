@@ -66,7 +66,8 @@ PRICE CALCULATION (WHEN SAVED ORDER BOOKS HAVE THE NEEDED SIDES)
   External input rate x best ask (or local buy assumption) = input cost/min
   Surplus output rate x best bid (or local sell assumption) = sales/min
   Sales/min - input cost/min = estimated net profit/min
-  Missing side --> overview shows $... / min; inspect per-flow values
+  Missing side --> use opposite book side as an estimate
+  Both sides missing --> graph/plan may use ticker reference; otherwise $...
   |
   v
 KEEP OR MOVE THE PLAN
@@ -112,43 +113,58 @@ OPEN PRICES
   |
   +--> IF DATA IS MISSING
          No saved points --> explain that history must be collected
-         Missing bid/ask --> leave affected chain value incomplete
+         Missing bid or ask --> use opposite side from that same hour
+         Both missing --> leave affected chain value incomplete
          Sparse/stale points or an unreliable trend
          --> withhold the forecast and explain that it is unavailable
 ```
 
-The chart uses recorded market prices. Browser-local buy/sell what-if values do not rewrite history. History is limited to the 90 days retained in SQLite, so a selected window may contain less data than its label suggests.
+The chart uses recorded market prices. Browser-local buy/sell what-if values do not rewrite history. Local SQLite and production D1 syncs retain at most 90 days, so a selected window may contain less data than its label suggests.
 
 ## How a price reaches the page
 
 ```text
 Recipe import (reviewed source JSON)
   --> transactional SQLite catalogue import + source record + archive
+  --> one-time D1 catalogue load for the current production snapshot
   --> GET /api/recipes and GET /api/meta
   --> catalogue, targets, calculations, and catalogue age in browser
 
 Signed-in game browser + local market collector
   --> game ticker reference prices + per-item order books
-  --> POST /api/prices/sync (validation, hourly cooldown, sync log)
-  --> current quotes/books + hourly history in SQLite (90-day retention)
+  --> token-protected POST /api/prices/sync on Pages
+      (validation, hourly cooldown, sync log)
+  --> current quotes/books + hourly history in D1 (90-day retention)
   --> GET /api/prices
   --> Prices table, graph labels, plan economics, recipe optimizer
   --> GET /api/prices/history for selected symbols and time window
   --> timestamped item charts and chain calculations in History
 
-Before a game item snapshot exists:
-  GET /api/prices may attempt the public status feed once per 24 hours
-  --> fallback public quotes + refresh log in SQLite
-  --> available fallback rows in the Prices table
 ```
 
-**The website's reload button does not run the signed-in collector.** The collector is a separate local command documented in [market-sync.md](market-sync.md); the manual bookmarklet is also available. A normal server request to the game's authenticated ticker cannot use the user's game login.
+**The website's reload button does not run the signed-in collector.** The collector is a separate command documented in [market-sync.md](market-sync.md); the manual bookmarklet is available for local imports only. A normal server request to the game's authenticated ticker cannot use the user's game login.
+
+## How images reach the page
+
+```text
+Signed-in game browser
+  +--> machine image refresh --> local SQLite --> static export
+  |      --> public/machines/*.png in the Pages build
+  +--> item image refresh --> local SQLite --> generated D1 SQL import
+         --> GET /api/items/{id}/image on Pages
+
+Recipe API provides image URLs when a saved image exists
+  --> item artwork in catalogue, graph, targets, tables, and History
+  --> machine thumbnails on graph cards and in Buildings
+```
+
+Both refresh paths are manual. A catalogue or game-art update needs a separate image coverage check and redeployment or D1 import as appropriate.
 
 ## Decision points and limits
 
 1. **Another recipe exists for an ingredient?** Automatic expansion uses the first catalogue recipe unless an optimizer route was selected. The user can manually pick a producer for a card's ingredient.
 2. **A producer is shared?** Its machine count is sized for the sum of connected demand. Whole machines are rounded up, so surplus may result.
 3. **No recipe exists or direct import is chosen?** The item remains an external requirement. The amount entered as an available import is shown against that requirement; it does not erase it.
-4. **A price is missing?** The affected valuation is incomplete. The ticker reference is not substituted for a missing bid or ask.
+4. **A price is missing?** The opposite order-book side becomes an estimate when only one side is missing. Graph and plan figures may use the ticker reference when both sides are absent; the optimizer does not. A missing quote stays incomplete.
 5. **Only one saved history point exists?** The Prices table says **Collecting**. History can display the known point, but a trend and next-hour estimate need more suitable snapshots.
-6. **A quote row exists without a needed bid or ask?** The affected flow and net total remain incomplete; the ticker reference does not replace the missing order-book side.
+6. **A quote row exists without a needed bid or ask?** The opposite side supplies an `≈` proxy for that valuation. Historical item charts continue to show the actual recorded sides, with their gaps.

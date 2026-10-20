@@ -1,6 +1,6 @@
 # Website guide
 
-This describes the website as implemented in `app/app.vue` and its current server routes. It is a guide to the running planner, not a specification for planned features. Follow the [text flow chart](WEBSITE_FLOW.md) for the step-by-step journey and [project plan](PROJECT_PLAN.md) for work that is still proposed.
+This describes the verified Pages deployment from 2026-10-20. It is a guide to the running planner, not a specification for in-progress working-tree changes. Follow the [text flow chart](WEBSITE_FLOW.md) for the step-by-step journey and [project plan](PROJECT_PLAN.md) for work that is still proposed.
 
 ## What opens in the browser
 
@@ -19,7 +19,7 @@ At startup, the browser restores a saved plan and any local price assumptions, r
 | Catalogue search and categories | Filters recipes by name, label, or building category. Press `/` outside a text field to focus catalogue search. |
 | Recipe row | Click to add a machine card or drag it onto the graph. If that product is already present, the existing card is selected instead of adding another producer. |
 
-The catalogue groups recipes by their building (`station`). A recipe contains a product, output batch size, rate per minute, and ingredient quantities. When a stored machine thumbnail exists, the catalogue shows it beside the recipe; otherwise it shows the product's initial. The same catalogue feeds target generation, the dependency tree, and the optimizer. The import metadata is used to show the catalogue age.
+The catalogue groups recipes by their building (`station`). A recipe contains a product, output batch size, rate per minute, and ingredient quantities. Product and ingredient labels show saved item artwork when available, with an initial as fallback. Machine cards can also show a station thumbnail. The same catalogue feeds target generation, the dependency tree, and the optimizer. The import metadata is used to show the catalogue age.
 
 ## Network Graph
 
@@ -50,13 +50,13 @@ Targets has **Outputs**, **Inputs**, and **Options** sections.
 
 ## Prices
 
-The Prices view uses quotes saved in the local SQLite database. The page shows the latest known time, the next eligible sync time, refresh status, and how many catalogue items and order books are covered. **Check for due update** reloads the planner's price endpoint. An authenticated game browser sync is needed to collect new item ticker and order-book data; see [market sync](market-sync.md).
+The Prices view uses quotes saved in D1 on the deployed site and SQLite during local development. The page shows the latest known time, refresh status, and how many catalogue items and order books are covered. **Check for due update** reloads the planner's price endpoint; it does not collect from the game. An authenticated game browser sync is needed for new item ticker and order-book data; see [market sync](market-sync.md).
 
 | Price field | Meaning |
 | --- | --- |
-| Ticker reference | The game's reference value. It is not the price used for the site's buy or sale estimates. |
-| Quick buy / best ask | Lowest visible sell ask; used for purchased inputs. |
-| Instant sell / best bid | Highest visible buy bid; used for output sale estimates. |
+| Ticker reference | The game's reference value. Graph and plan estimates can use it when neither book side is available; it is labelled as an estimate. |
+| Quick buy / best ask | Lowest visible sell ask; used for purchased inputs. If missing, the table shows the bid as an `≈` proxy. |
+| Instant sell / best bid | Highest visible buy bid; used for output sale estimates. If missing, the table shows the ask as an `≈` proxy. |
 | Suggested sell offer | One cent below the best ask, floored at zero. It is a suggested listing price, not a guaranteed sale. |
 | Your buy / Your sell | Browser-local what-if values. They replace the corresponding side in plan and optimizer calculations but do not change saved market quotes. Reset removes both overrides for an item. |
 | 30-day sell trend | A small line made from available saved best-bid snapshots. With fewer than two points it says **Collecting**. The line has no interactive time axis. |
@@ -64,7 +64,7 @@ The Prices view uses quotes saved in the local SQLite database. The page shows t
 
 The game item ticker does not provide item trading volume. Its **Units traded · 24h** cell is therefore blank (`—`), and volume share is unavailable for those items. Public fallback quotes can carry volume and are shown only until a matching game item quote takes precedence.
 
-**Profit and production value** multiplies each surplus item's per-minute rate by its sell price and each external input's rate by its buy price. It lists known subtotals, and the net total requires every needed bid and ask. Missing sides display as incomplete. **Most profitable production routes** ranks recipes by estimated one-machine profit per minute. For each ingredient it chooses the cheapest known direct purchase or recursively craftable route, displays the input breakdown and margin, and offers **Add chain** to place the chosen route on the graph. Missing price sides leave a route out. The optimizer does not model machine purchase, fees, taxes, order-book depth, fill chance, unlocks, or competing demand.
+**Profit and production value** multiplies each surplus item's per-minute rate by its sell price and each external input's rate by its buy price. It uses the opposite book side when the needed side is missing, marked `≈`; if neither book side exists, a saved ticker reference may supply a separately labelled estimate. A missing quote still leaves that flow incomplete. **Most profitable production routes** ranks recipes by estimated one-machine profit per minute. For each ingredient it chooses the cheapest known direct purchase or recursively craftable route, displays the input breakdown and margin, and offers **Add chain** to place the chosen route on the graph. The optimizer uses an opposite-side proxy when needed but does not use ticker-only prices. It does not model machine purchase, fees, taxes, order-book depth, fill chance, unlocks, or competing demand.
 
 ### History inside Prices
 
@@ -79,7 +79,7 @@ Select **History** beside **Factory / Prices** to replace the Prices overview wi
 | Chart and time slider | The chart labels each line and its value at the selected timestamp, displayed in the browser's local time zone. Move over the chart or use the keyboard-accessible range slider to inspect another saved time. Point markers show recorded observations, and lines break across missing prices or gaps longer than 90 minutes. The summary cards count recorded times, show the latest available quote or the number of complete chain points, and show the latest relevant saved time. The chart can show fewer points than the selected range when collection started recently or some snapshots failed. |
 | Forecast | **Show estimate when supported** controls a separately labelled next-hour **best-bid estimate** and its error-based range for one selected item. It needs at least 32 fresh, approximately hourly bid observations and a simple trend that beat a no-change baseline in recent checks. It is unavailable for item comparisons, an ask-only or reference-only chart, chains, or unsuitable history. It is not a guaranteed trade price and is not inserted into the plan or chain profit calculations. |
 
-Chain sales multiply each selected output's rate per minute by its saved **best bid**; external input costs multiply each required rate by its saved **best ask**. Net margin is sales minus costs. The whole-plan choice uses the current graph's surplus and external inputs. A selected output traces its linked suppliers at the rate that output needs, without selling unrelated surplus from a shared producer. Prices are joined only at the same saved timestamp. The calculation uses recorded market data, not the browser's **Your buy / Your sell** assumptions, and it excludes machine costs, fees, depth, and price impact. When a needed bid or ask is missing at a time, the affected total remains incomplete rather than treating that price as zero. The [text flow chart](WEBSITE_FLOW.md#prices--history-step-by-step) traces this path in order.
+Chain sales multiply each selected output's rate per minute by its saved **best bid**; external input costs multiply each required rate by its saved **best ask**. When a needed side is missing, the calculation uses the opposite side from that same timestamp as a proxy. When both sides are missing, the affected total remains incomplete rather than treating that price as zero. Net margin is sales minus costs. The whole-plan choice uses the current graph's surplus and external inputs. A selected output traces its linked suppliers at the rate that output needs, without selling unrelated surplus from a shared producer. The calculation uses recorded market data, not the browser's **Your buy / Your sell** assumptions or ticker references, and it excludes machine costs, fees, depth, and price impact. The [text flow chart](WEBSITE_FLOW.md#prices--history-step-by-step) traces this path in order.
 
 The forecast uses recent changes between the first and second halves of a 12-observation window, checks the method against a no-change estimate over 12 past predictions, and offers a next-hour projection only if it performed better. Its displayed range derives from recent prediction errors with a minimum width; it is a heuristic, not a measured probability that the next bid will fall inside it.
 
@@ -89,18 +89,19 @@ The chart history depends on separate market collection. An empty plan has no ch
 
 | Route | Current role |
 | --- | --- |
-| `GET /api/recipes` | Returns recipes, their ingredients, and an optional machine image URL. Supports `search` and `station` filters; the page currently loads the full list and filters it in the browser. |
+| `GET /api/recipes` | Returns recipes, their ingredients, and optional machine and item image URLs. Supports `search` and `station` filters; the page currently loads the full list and filters it in the browser. |
 | `GET /api/meta` | Returns the latest catalogue import's date, source, counts, and digest. |
-| `GET /api/prices` | Returns saved current quotes, short trend arrays, coverage, source, and refresh status. Before an item snapshot exists, it may attempt a public fallback refresh at most once per 24 hours. |
+| `GET /api/prices` | Returns saved current quotes, short trend arrays, coverage, source, and refresh status. It does not start a game or public-feed refresh. |
 | `GET /api/prices/history?symbols=...&range=...` | Returns ordered timestamped ticker reference, best-bid, and best-ask points for 1–100 unique item symbols. The range is `24h`, `7d`, `30d` (default), or `90d`; an absent value is `null`, never interpolated. Public reference history is a fallback only for a symbol without a saved game ticker quote. Unknown symbols have an empty series. |
-| `POST /api/prices/sync` | Receives a validated signed-in ticker and optional order books from the local collector or game-origin bookmarklet; normally limited to one accepted attempt per hour. It is not a page control. |
-| `GET /api/machines/{station}/image` | Serves an optional stored PNG for a machine station. The catalogue, graph cards, and Buildings view display it where available. |
+| `POST /api/prices/sync` | Receives a validated signed-in ticker and optional order books. The deployed endpoint requires the private sync token and normally accepts one update per hour. A local browser bookmarklet can post only to a local planner. It is not a page control. |
+| `GET /api/machines/{station}/image` | Redirects known stations to exported static PNGs, with a database fallback. The catalogue, graph cards, and Buildings view display available thumbnails. |
+| `GET /api/items/{id}/image` | Serves saved item artwork from D1 on Pages or SQLite locally. Item labels use an initial when artwork is unavailable. |
 
-The server uses `database/schema.sql` to create missing tables when it opens SQLite. The [database diagram](DATABASE_DIAGRAM.md) covers current and historical price tables, catalogue imports, and optional machine images. The optional `npm run images:refresh` collector populates images from the signed-in game session; image use and redistribution terms still need review before public release.
+Local development uses `database/schema.sql` to create missing SQLite tables. Production Pages Functions use the D1 binding described in `wrangler.toml`. The [database diagram](DATABASE_DIAGRAM.md) covers current and historical price tables, catalogue imports, and images. `npm run images:refresh` plus `npm run images:export` prepares machine PNGs for Pages; the item-image collector and D1 import are separate manual steps. Image use and redistribution terms still need review for the live site.
 
 ## Saving, data, and failures
 
 - The plan autosaves in this browser's local storage shortly after a change. Price assumptions use a separate local storage key. Neither is an account sync. Undo history lasts only for the open page; export a JSON file for a portable copy.
-- The server reads recipes, import metadata, and market snapshots from `database/capitalrift.sqlite`. It does not store users' graph plans. The database layout is in [DATABASE_DIAGRAM.md](DATABASE_DIAGRAM.md).
-- Missing market quotes or order-book sides display as `$...` where a price is needed. Refresh failures leave the last saved quotes available and show a failure or partial status. A fresh market timestamp is not proof that every item has a fresh book; use the coverage indicator.
+- The local server reads `database/capitalrift.sqlite`; the deployed server reads D1. Neither stores users' graph plans. The database layout is in [DATABASE_DIAGRAM.md](DATABASE_DIAGRAM.md).
+- A missing order-book side uses the opposite side as an `≈` proxy in current and historical valuations. Where current graph economics has no book side at all, it may use the ticker reference as a labelled estimate. A missing item quote remains `$...`. Refresh failures leave the last saved quotes available and show a failure or partial status. A fresh market timestamp is not proof that every item has a fresh book; use the coverage indicator.
 - The site is a planning aid. Calculated production and profit need validation against current game rules; price estimates are based on visible order-book tops and may not be executable at the planned quantity.
