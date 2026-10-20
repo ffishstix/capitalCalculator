@@ -552,7 +552,7 @@ function removeNode(nodeId: string) {
 function canExpandChain(node: MachineNode) {
   return recipeFor(node)?.ingredients.some(ingredient => {
     const providerId = connections.value[inputKey(node.id, ingredient.item_id)]
-    const provider = nodesById.value.get(providerId)
+    const provider = providerId ? nodesById.value.get(providerId) : undefined
     const providerRecipe = provider && recipeFor(provider)
     if (providerRecipe?.product_id === ingredient.item_id && providerRecipe.rate > 0) return false
     return !isImportedItem(ingredient.item_id) && recipesForItem(ingredient.item_id).length > 0
@@ -624,7 +624,7 @@ function updatePortPositions() {
   }
   for (const key of portOffsets.keys()) if (!activeKeys.has(key) && !portElements.has(key)) portOffsets.delete(key)
   const old = portPositions.value
-  const changed = Object.keys(positions).length !== Object.keys(old).length || Object.keys(positions).some(key => !old[key] || Math.abs(old[key].x - positions[key].x) > 0.5 || Math.abs(old[key].y - positions[key].y) > 0.5)
+  const changed = Object.keys(positions).length !== Object.keys(old).length || Object.entries(positions).some(([key, position]) => !old[key] || Math.abs(old[key].x - position.x) > 0.5 || Math.abs(old[key].y - position.y) > 0.5)
   if (changed) portPositions.value = positions
 }
 function startNodeMove(event: PointerEvent, node: MachineNode) {
@@ -786,7 +786,7 @@ function consolidateOutputNodes() {
   const result = mergeDuplicateOutputs(nodes.value, connections.value, selectedNodeIds.value, recipeById.value)
   if (result.nodes === nodes.value) return
   nodes.value = result.nodes
-  connections.value = result.connections
+  connections.value = result.connections as Record<string, string>
   selectedNodeIds.value = result.selectedNodeIds
 }
 function expandChain(root: MachineNode, relayout = true, recipeChooser?: (itemId: string) => Recipe | undefined) {
@@ -831,7 +831,7 @@ function expandChain(root: MachineNode, relayout = true, recipeChooser?: (itemId
     let cursorY = parent.y + machineCardHeight(recipe) / 2 - stackHeight / 2
     newNeeds.forEach((need, index) => {
       const candidate = need.candidate!
-      const branchHeight = branchHeights[index]
+      const branchHeight = branchHeights[index] ?? 0
       const child: MachineNode = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         recipeId: candidate.id,
@@ -902,16 +902,29 @@ function buildProductionTargets() {
 
 const network = computed(() => calculateNetworkSummary(nodes.value, connections.value, recipeById.value))
 const quoteByItemName = computed(() => new Map((marketData.value?.quotes ?? []).map(quote => [quote.name.trim().toLocaleLowerCase(), quote])))
+function bookPrice(quote: MarketQuote, side: 'buy' | 'sell') {
+  return side === 'buy' ? quote.buyPrice ?? quote.sellPrice ?? undefined : quote.sellPrice ?? quote.buyPrice ?? undefined
+}
+function usesOppositeSide(quote: MarketQuote | undefined, side: 'buy' | 'sell') {
+  return !!quote && (side === 'buy' ? quote.buyPrice == null && quote.sellPrice != null : quote.sellPrice == null && quote.buyPrice != null)
+}
 function priceFor(name: string, side: 'buy' | 'sell' = 'buy') {
   const quote = quoteByItemName.value.get(name.trim().toLocaleLowerCase())
   if (!quote) return undefined
   const override = priceOverrides.value[quote.symbol]?.[side]
   if (override !== undefined) return override
-  return side === 'buy' ? quote.buyPrice ?? undefined : quote.sellPrice ?? undefined
+  return bookPrice(quote, side)
+}
+function estimatedPriceFor(name: string, side: 'buy' | 'sell' = 'buy') {
+  const marketPrice = priceFor(name, side)
+  if (marketPrice !== undefined) return marketPrice
+  const reference = quoteByItemName.value.get(name.trim().toLocaleLowerCase())?.price
+  return reference !== undefined && Number.isFinite(reference) ? reference : undefined
 }
 function itemPrice(name: string, side: 'buy' | 'sell' = 'buy') {
-  const price = priceFor(name, side)
-  return price === undefined ? '$...' : `$${price.toFixed(2)}`
+  const price = estimatedPriceFor(name, side)
+  const quote = quoteByItemName.value.get(name.trim().toLocaleLowerCase())
+  return price === undefined ? '$...' : `${priceFor(name, side) === undefined || (priceOverrides.value[quote?.symbol ?? '']?.[side] === undefined && usesOppositeSide(quote, side)) ? '≈' : ''}$${price.toFixed(2)}`
 }
 function setPriceOverride(symbol: string, side: 'buy' | 'sell', value: string) {
   const overrides = { ...priceOverrides.value }
@@ -946,20 +959,28 @@ function sparklinePoints(values: number[]) {
 }
 function processProfit(recipe: Recipe | undefined, machineCount = 1): number | undefined {
   if (!recipe) return undefined
-  const outputPrice = priceFor(recipe.product, 'sell')
+  const outputPrice = estimatedPriceFor(recipe.product, 'sell')
   if (outputPrice === undefined) return undefined
   let profit = outputPrice * recipe.rate * machineCount
   for (const ingredient of recipe.ingredients) {
-    const inputPrice = priceFor(ingredient.name, 'buy')
+    const inputPrice = estimatedPriceFor(ingredient.name, 'buy')
     if (inputPrice === undefined) return undefined
     profit -= inputPrice * ingredient.quantity * recipe.rate / recipe.batch * machineCount
   }
   return profit
 }
-function profitLabel(value: number | undefined) {
+function recipeUsesReference(recipe: Recipe | undefined) {
+  if (!recipe) return false
+  const estimated = (name: string, side: 'buy' | 'sell') => {
+    const quote = quoteByItemName.value.get(name.trim().toLocaleLowerCase())
+    return priceFor(name, side) === undefined || (priceOverrides.value[quote?.symbol ?? '']?.[side] === undefined && usesOppositeSide(quote, side))
+  }
+  return estimated(recipe.product, 'sell') || recipe.ingredients.some(ingredient => estimated(ingredient.name, 'buy'))
+}
+function profitLabel(value: number | undefined, approximate = false) {
   if (value === undefined || !Number.isFinite(value)) return '$... / min'
   const sign = value > 0 ? '+' : value < 0 ? '−' : ''
-  return `${sign}$${Math.abs(value).toFixed(2)} / min`
+  return `${approximate ? '≈' : ''}${sign}$${Math.abs(value).toFixed(2)} / min`
 }
 const graphPanels = computed(() => {
   const producedByInput = new Map(network.value.connectionRows.map(link => [link.key, link.produced]))
@@ -1022,12 +1043,12 @@ const graphConnections = computed<GraphConnection[]>(() => graphPanels.value.con
 const totalProfitPerMinute = computed<number | undefined>(() => {
   let total = 0
   for (const item of network.value.surplus) {
-    const price = priceFor(item.name, 'sell')
+    const price = estimatedPriceFor(item.name, 'sell')
     if (price === undefined) return undefined
     total += price * item.amount
   }
   for (const item of network.value.external) {
-    const price = priceFor(item.name, 'buy')
+    const price = estimatedPriceFor(item.name, 'buy')
     if (price === undefined) return undefined
     total -= price * item.amount
   }
@@ -1037,16 +1058,18 @@ const planEconomics = computed(() => {
   const valueRows = (items: Array<{ id: string; name: string; amount: number }>, side: 'buy' | 'sell') => {
     const rows = items.map(item => {
       const quote = quoteByItemName.value.get(item.name.trim().toLocaleLowerCase())
-      const price = priceFor(item.name, side)
-      return { ...item, quote, price, valuePerMinute: price === undefined ? undefined : price * item.amount }
+      const price = estimatedPriceFor(item.name, side)
+      const referencePrice = price !== undefined && priceFor(item.name, side) === undefined
+      const proxyPrice = !referencePrice && priceOverrides.value[quote?.symbol ?? '']?.[side] === undefined && usesOppositeSide(quote, side)
+      return { ...item, quote, price, referencePrice, proxyPrice, valuePerMinute: price === undefined ? undefined : price * item.amount }
     })
     const knownTotal = rows.reduce((sum, row) => sum + (row.valuePerMinute ?? 0), 0)
-    return { rows, knownTotal, pricedCount: rows.filter(row => row.price !== undefined).length, unpricedCount: rows.filter(row => row.price === undefined).length }
+    return { rows, knownTotal, pricedCount: rows.filter(row => row.price !== undefined).length, unpricedCount: rows.filter(row => row.price === undefined).length, referenceCount: rows.filter(row => row.referencePrice).length, proxyCount: rows.filter(row => row.proxyPrice).length }
   }
   const sales = valueRows(network.value.surplus, 'sell')
   const costs = valueRows(network.value.external, 'buy')
   const complete = sales.unpricedCount === 0 && costs.unpricedCount === 0
-  return { sales, costs, netKnown: sales.knownTotal - costs.knownTotal, complete }
+  return { sales, costs, netKnown: sales.knownTotal - costs.knownTotal, complete, usesReference: sales.referenceCount + costs.referenceCount > 0, usesEstimate: sales.referenceCount + costs.referenceCount + sales.proxyCount + costs.proxyCount > 0 }
 })
 const optimizerOpportunities = computed<OptimizerOpportunity[]>(() => {
   if (!marketData.value || !recipes.value.length) return []
@@ -1256,6 +1279,7 @@ function arrangeNetwork() {
   const processed = new Set<string>()
   for (let cursor = 0; cursor < queue.length; cursor++) {
     const consumer = queue[cursor]
+    if (!consumer) continue
     if (processed.has(consumer.id)) continue
     processed.add(consumer.id)
     const depth = depths.get(consumer.id) ?? 0
@@ -1414,14 +1438,14 @@ function linkPath(link: GraphConnection) {
                   <span class="port input-port" :class="{ connected: connections[inputKey(node.id, ingredient.item_id)] }" :ref="element => setPortElement(`input:${inputKey(node.id, ingredient.item_id)}`, element)" />
                   <span><ItemIcon :item-id="ingredient.item_id" :name="ingredient.name" />{{ ingredient.name }} ({{ itemPrice(ingredient.name, 'buy') }})</span>
                 </div>
-                <div class="compact-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><strong><ItemIcon :item-id="recipeFor(node)?.product_id" :name="recipeFor(node)?.product ?? ''" />{{ recipeFor(node)?.product }} ({{ itemPrice(recipeFor(node)?.product ?? '', 'sell') }})</strong><span class="compact-output-meta"><small :class="{ 'profit-positive': (processProfit(recipeFor(node), node.machines) ?? 0) > 0, 'profit-negative': (processProfit(recipeFor(node), node.machines) ?? 0) < 0 }">{{ profitLabel(processProfit(recipeFor(node), node.machines)) }}</small><small class="compact-output-rate">{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} / min</small></span></div>
+                <div class="compact-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><strong><ItemIcon :item-id="recipeFor(node)?.product_id" :name="recipeFor(node)?.product ?? ''" />{{ recipeFor(node)?.product }} ({{ itemPrice(recipeFor(node)?.product ?? '', 'sell') }})</strong><span class="compact-output-meta"><small :class="{ 'profit-positive': (processProfit(recipeFor(node), node.machines) ?? 0) > 0, 'profit-negative': (processProfit(recipeFor(node), node.machines) ?? 0) < 0 }">{{ profitLabel(processProfit(recipeFor(node), node.machines), recipeUsesReference(recipeFor(node))) }}</small><small class="compact-output-rate">{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} / min</small></span></div>
               </div>
               <div v-else class="machine-body">
                 <p class="node-label">PRODUCTION MACHINE</p>
                 <h2><ItemIcon :item-id="recipeFor(node)?.product_id" :name="recipeFor(node)?.product ?? ''" />{{ recipeFor(node)?.product }}</h2>
                 <div class="machine-control"><span>Machines</span><div class="stepper"><button :aria-label="`Remove one ${recipeFor(node)?.product} machine`" @click="setMachineCount(node, node.machines - 1)">−</button><input :aria-label="`${recipeFor(node)?.product} machine count`" type="number" min="1" max="999" :value="node.machines" @change="setMachineCount(node, ($event.target as HTMLInputElement).value)"><button :aria-label="`Add one ${recipeFor(node)?.product} machine`" @click="setMachineCount(node, node.machines + 1)">+</button></div></div>
                 <button v-if="canExpandChain(node)" class="expand-chain" :title="`Create producer machines for ${recipeFor(node)?.product} inputs`" @pointerdown.stop @click="expandChain(node)"><span aria-hidden="true">↳</span> Expand ingredient chain</button>
-                <div class="node-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><span class="port-copy"><small>OUTPUT</small><strong>{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} <em>/ min</em></strong></span><span class="output-copy"><strong class="output-name"><ItemIcon :item-id="recipeFor(node)?.product_id" :name="recipeFor(node)?.product ?? ''" />{{ recipeFor(node)?.product }} ({{ itemPrice(recipeFor(node)?.product ?? '', 'sell') }})</strong><small class="node-profit" :class="{ 'profit-positive': (processProfit(recipeFor(node), node.machines) ?? 0) > 0, 'profit-negative': (processProfit(recipeFor(node), node.machines) ?? 0) < 0 }">{{ profitLabel(processProfit(recipeFor(node), node.machines)) }}</small></span></div>
+                <div class="node-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><span class="port-copy"><small>OUTPUT</small><strong>{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} <em>/ min</em></strong></span><span class="output-copy"><strong class="output-name"><ItemIcon :item-id="recipeFor(node)?.product_id" :name="recipeFor(node)?.product ?? ''" />{{ recipeFor(node)?.product }} ({{ itemPrice(recipeFor(node)?.product ?? '', 'sell') }})</strong><small class="node-profit" :class="{ 'profit-positive': (processProfit(recipeFor(node), node.machines) ?? 0) > 0, 'profit-negative': (processProfit(recipeFor(node), node.machines) ?? 0) < 0 }">{{ profitLabel(processProfit(recipeFor(node), node.machines), recipeUsesReference(recipeFor(node))) }}</small></span></div>
                 <div class="input-heading"><span>INPUTS</span><span>/ MIN</span></div>
                 <div v-for="ingredient in recipeFor(node)?.ingredients" :key="ingredient.item_id" class="node-input">
                   <span class="port input-port" :class="{ connected: connections[inputKey(node.id, ingredient.item_id)] }" :ref="element => setPortElement(`input:${inputKey(node.id, ingredient.item_id)}`, element)" />
@@ -1481,17 +1505,17 @@ function linkPath(link: GraphConnection) {
             <div class="table-intro"><div><p class="eyebrow">LIVE MARKET</p><h2>Market prices</h2></div><span v-if="marketData" class="market-freshness">Order books as of {{ new Date(marketData.asOf).toLocaleString() }}<small v-if="nextMarketCheck">Next eligible update {{ nextMarketCheck }}</small><small v-if="marketData.refreshOutcome === 'failed'" class="market-refresh-failed">Hourly order-book refresh failed; showing saved prices.</small><small v-else-if="marketData.refreshOutcome === 'partial'" class="market-refresh-failed">Some order books failed; showing the last saved prices for those items.</small></span><span v-else>Current public quotes</span></div>
             <p class="prices-note">Quotes come from saved game market snapshots. Ticker references cover {{ marketData?.catalogueCoverage?.priced ?? 0 }}/{{ marketData?.catalogueCoverage?.total ?? metadata?.itemCount ?? '?' }} catalogue items; order books cover {{ marketData?.orderBookCoverage?.priced ?? 0 }}/{{ marketData?.orderBookCoverage?.total ?? metadata?.itemCount ?? '?' }} market items. Quick buy, instant sell, and suggested offer appear when their order books have been collected. Select <strong>History</strong> for detailed charts. Buy and sell assumptions stay in your browser. <a href="https://play.capitalrift.com/" target="_blank" rel="noreferrer">Source ↗</a></p>
             <section class="economics-section">
-              <div class="economics-heading"><div><p class="eyebrow">CURRENT PLAN</p><h3>Profit and production value</h3></div><span>{{ planEconomics.sales.pricedCount + planEconomics.costs.pricedCount }} priced · {{ planEconomics.sales.unpricedCount + planEconomics.costs.unpricedCount }} unpriced flows</span></div>
+              <div class="economics-heading"><div><p class="eyebrow">CURRENT PLAN</p><h3>Profit and production value</h3></div><span>{{ planEconomics.sales.pricedCount + planEconomics.costs.pricedCount }} priced · {{ planEconomics.sales.proxyCount + planEconomics.costs.proxyCount }} opposite-side estimates · {{ planEconomics.sales.referenceCount + planEconomics.costs.referenceCount }} ticker estimates · {{ planEconomics.sales.unpricedCount + planEconomics.costs.unpricedCount }} unpriced flows</span></div>
               <div class="economics-cards">
                 <article class="economics-card"><span>EST. SALES · SURPLUS</span><strong>{{ planEconomics.sales.unpricedCount ? '$' + planEconomics.sales.knownTotal.toFixed(2) + ' + ?' : '$' + planEconomics.sales.knownTotal.toFixed(2) }}</strong><small>per minute · {{ planEconomics.sales.pricedCount }}/{{ planEconomics.sales.rows.length }} outputs priced</small></article>
                 <article class="economics-card"><span>EST. INPUT COST</span><strong>{{ planEconomics.costs.unpricedCount ? '$' + planEconomics.costs.knownTotal.toFixed(2) + ' + ?' : '$' + planEconomics.costs.knownTotal.toFixed(2) }}</strong><small>per minute · {{ planEconomics.costs.pricedCount }}/{{ planEconomics.costs.rows.length }} inputs priced</small></article>
-                <article class="economics-card net-card"><span>EST. NET PROFIT</span><strong :class="{ 'profit-positive': planEconomics.complete && planEconomics.netKnown > 0, 'profit-negative': planEconomics.complete && planEconomics.netKnown < 0 }">{{ planEconomics.complete ? profitLabel(planEconomics.netKnown) : '$... / min' }}</strong><small>{{ planEconomics.complete ? 'surplus sales minus external input costs' : 'requires prices for every external flow' }}</small></article>
+                <article class="economics-card net-card"><span>EST. NET PROFIT</span><strong :class="{ 'profit-positive': planEconomics.complete && planEconomics.netKnown > 0, 'profit-negative': planEconomics.complete && planEconomics.netKnown < 0 }">{{ planEconomics.complete ? profitLabel(planEconomics.netKnown, planEconomics.usesEstimate) : '$... / min' }}</strong><small>{{ planEconomics.complete ? 'surplus sales minus external input costs' : 'requires prices for every external flow' }}</small></article>
               </div>
               <div class="economics-columns">
-                <div class="economics-list"><h4>Surplus available to sell</h4><div v-for="item in planEconomics.sales.rows" :key="`sale-${item.id}`" class="economics-row"><span><ItemIcon :item-id="item.id" :name="item.name" />{{ item.name }}<small class="economics-rate">{{ amount(item.amount) }}/min × {{ item.price === undefined ? '$...' : '$' + item.price.toFixed(2) }} sell price</small><small v-if="item.quote" class="liquidity-note" :class="volumeShareClass(volumeSharePercent(item.amount, item.quote.units24h))">≈{{ volumeSharePercent(item.amount, item.quote.units24h)?.toFixed(1) }}% of reported 24h volume</small></span><strong>{{ item.valuePerMinute === undefined ? '$...' : '$' + item.valuePerMinute.toFixed(2) }}/min</strong></div><p v-if="!planEconomics.sales.rows.length" class="economics-empty">No unconnected product surplus to sell.</p></div>
-                <div class="economics-list"><h4>External materials to buy</h4><div v-for="item in planEconomics.costs.rows" :key="`cost-${item.id}`" class="economics-row"><span><ItemIcon :item-id="item.id" :name="item.name" />{{ item.name }}<small class="economics-rate">{{ amount(item.amount) }}/min × {{ item.price === undefined ? '$...' : '$' + item.price.toFixed(2) }} buy price</small><small v-if="item.quote" class="liquidity-note" :class="volumeShareClass(volumeSharePercent(item.amount, item.quote.units24h))">≈{{ volumeSharePercent(item.amount, item.quote.units24h)?.toFixed(1) }}% of reported 24h volume</small></span><strong>{{ item.valuePerMinute === undefined ? '$...' : '$' + item.valuePerMinute.toFixed(2) }}/min</strong></div><p v-if="!planEconomics.costs.rows.length" class="economics-empty">No external input costs in this plan.</p></div>
+                <div class="economics-list"><h4>Surplus available to sell</h4><div v-for="item in planEconomics.sales.rows" :key="`sale-${item.id}`" class="economics-row"><span><ItemIcon :item-id="item.id" :name="item.name" />{{ item.name }}<small class="economics-rate">{{ amount(item.amount) }}/min × {{ item.price === undefined ? '$...' : `${item.referencePrice || item.proxyPrice ? '≈' : ''}$${item.price.toFixed(2)}` }} {{ item.referencePrice ? 'ticker estimate' : item.proxyPrice ? 'buy-side proxy' : 'sell price' }}</small><small v-if="item.quote && volumeSharePercent(item.amount, item.quote.units24h) !== undefined" class="liquidity-note" :class="volumeShareClass(volumeSharePercent(item.amount, item.quote.units24h))">≈{{ volumeSharePercent(item.amount, item.quote.units24h)?.toFixed(1) }}% of reported 24h volume</small></span><strong>{{ item.valuePerMinute === undefined ? '$...' : '$' + item.valuePerMinute.toFixed(2) }}/min</strong></div><p v-if="!planEconomics.sales.rows.length" class="economics-empty">No unconnected product surplus to sell.</p></div>
+                <div class="economics-list"><h4>External materials to buy</h4><div v-for="item in planEconomics.costs.rows" :key="`cost-${item.id}`" class="economics-row"><span><ItemIcon :item-id="item.id" :name="item.name" />{{ item.name }}<small class="economics-rate">{{ amount(item.amount) }}/min × {{ item.price === undefined ? '$...' : `${item.referencePrice || item.proxyPrice ? '≈' : ''}$${item.price.toFixed(2)}` }} {{ item.referencePrice ? 'ticker estimate' : item.proxyPrice ? 'sell-side proxy' : 'buy price' }}</small><small v-if="item.quote && volumeSharePercent(item.amount, item.quote.units24h) !== undefined" class="liquidity-note" :class="volumeShareClass(volumeSharePercent(item.amount, item.quote.units24h))">≈{{ volumeSharePercent(item.amount, item.quote.units24h)?.toFixed(1) }}% of reported 24h volume</small></span><strong>{{ item.valuePerMinute === undefined ? '$...' : '$' + item.valuePerMinute.toFixed(2) }}/min</strong></div><p v-if="!planEconomics.costs.rows.length" class="economics-empty">No external input costs in this plan.</p></div>
               </div>
-              <p class="economics-disclaimer">Volume share compares this plan’s estimated 24-hour rate with the feed’s 24-hour traded units; it is a scale indicator, not a fill guarantee. Estimates exclude machine/building costs, fees, and price impact.</p>
+              <p class="economics-disclaimer">When one book side is unavailable, ≈ uses the opposite side as a proxy. If both sides are unavailable, ≈ uses the saved ticker reference where available. Neither is a guaranteed trade price. Volume share compares this plan’s estimated 24-hour rate with the feed’s 24-hour traded units; it is a scale indicator, not a fill guarantee. Estimates exclude machine/building costs, fees, and price impact.</p>
             </section>
             <section class="price-optimizer">
               <div class="economics-heading"><div><p class="eyebrow">RECIPE OPTIMIZER</p><h3>Most profitable production routes</h3></div><span>{{ optimizerOpportunities.length }} fully priced recipes</span></div>
@@ -1501,12 +1525,12 @@ function linkPath(link: GraphConnection) {
                 <tr v-for="opportunity in filteredOptimizerOpportunities" :key="opportunity.recipe.id" :class="{ 'loss-row': opportunity.marginPerItem < 0 }"><td><strong class="optimizer-product"><ItemIcon :item-id="opportunity.recipe.product_id" :name="opportunity.recipe.product" />{{ opportunity.recipe.product }}</strong><details class="optimizer-details"><summary>{{ opportunity.inputCosts.length }} input{{ opportunity.inputCosts.length === 1 ? '' : 's' }} · show cost breakdown</summary><div v-for="input in opportunity.inputCosts" :key="input.name" class="optimizer-input-detail"><span><ItemIcon :item-id="input.itemId" :name="input.name" />{{ input.name }} · {{ amount(input.amountPerItem) }}/item<span v-if="input.routeRecipe"> via {{ input.routeRecipe.label }}</span></span><b>{{ '$' + input.unitCost.toFixed(2) }}/unit · {{ '$' + input.totalCost.toFixed(2) }}</b></div></details></td><td>{{ opportunity.recipe.label }}<small class="optimizer-building">{{ opportunity.recipe.station.replaceAll('_', ' ') }}</small></td><td>{{ '$' + opportunity.outputPrice.toFixed(2) }}</td><td>{{ '$' + opportunity.inputCostPerItem.toFixed(2) }}</td><td :class="opportunity.marginPerItem >= 0 ? 'profit-positive' : 'profit-negative'">{{ (opportunity.marginPerItem < 0 ? '−$' : '+$') + Math.abs(opportunity.marginPerItem).toFixed(2) }}</td><td>{{ opportunity.marginPercent.toFixed(1) }}%</td><td :class="opportunity.profitPerMinute >= 0 ? 'profit-positive' : 'profit-negative'">{{ profitLabel(opportunity.profitPerMinute) }}</td><td :class="volumeShareClass(opportunity.outputVolumeShare)">{{ opportunity.outputVolumeShare === undefined ? '$...' : `≈${opportunity.outputVolumeShare.toFixed(1)}%` }}</td><td><button class="optimizer-build" @click="buildOptimizedChain(opportunity)">Add chain</button></td></tr>
                 <tr v-if="!filteredOptimizerOpportunities.length"><td colspan="9" class="table-empty">{{ optimizerOpportunities.length ? 'No priced recipes match this search.' : 'No recipe has a fully priced output and ingredient route yet. More market coverage is needed.' }}</td></tr>
               </tbody></table></div>
-              <p class="optimizer-footnote">The optimizer compares item prices only. It does not account for machine investment, throughput limits, market liquidity, taxes, recipe unlocks, or competing demand. Routes are theoretical until those rules and full item prices are available.</p>
+              <p class="optimizer-footnote">When one book side is missing, the optimizer uses the opposite side as a proxy. It does not account for machine investment, throughput limits, market liquidity, taxes, recipe unlocks, or competing demand. Routes are theoretical until those rules and full item prices are available.</p>
             </section>
             <div class="prices-controls"><label class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" placeholder="Search market quotes"></label><button class="button" :disabled="marketLoading" @click="loadMarketPrices(true)">{{ marketLoading ? 'Loading…' : 'Check for due update' }}</button></div>
             <p v-if="marketLoading && !marketData" class="table-empty prices-status">Loading live quotes…</p><p v-else-if="marketError" class="table-empty prices-status" role="alert">{{ marketError }}</p>
             <div v-else class="table-scroll market-table-scroll"><table class="planner-table market-table"><thead><tr><th>Item</th><th>Ticker</th><th>Ticker reference</th><th>Quick buy · best ask</th><th>Instant sell · best bid</th><th>Suggested sell offer</th><th>Your buy</th><th>Your sell</th><th>Units traded · 24h</th><th>30-day sell trend</th><th>Change since prior snapshot</th><th></th></tr></thead><tbody>
-              <tr v-for="quote in filteredMarketQuotes" :key="quote.symbol"><th scope="row"><ItemIcon class="table-item-icon" :item-id="quote.symbol" :name="quote.name" />{{ quote.name }}</th><td>{{ quote.symbol }}</td><td>{{ '$' + quote.price.toFixed(2) }}</td><td>{{ quote.buyPrice == null ? '$...' : '$' + quote.buyPrice.toFixed(2) }}</td><td>{{ quote.sellPrice == null ? '$...' : '$' + quote.sellPrice.toFixed(2) }}</td><td>{{ quote.suggestedSellOffer == null ? '$...' : '$' + quote.suggestedSellOffer.toFixed(2) }}</td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario buy price for ${quote.name}`" :placeholder="quote.buyPrice == null ? '' : quote.buyPrice.toFixed(2)" :value="priceOverrides[quote.symbol]?.buy ?? ''" @change="setPriceOverride(quote.symbol, 'buy', ($event.target as HTMLInputElement).value)"></td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario sell price for ${quote.name}`" :placeholder="quote.sellPrice == null ? '' : quote.sellPrice.toFixed(2)" :value="priceOverrides[quote.symbol]?.sell ?? ''" @change="setPriceOverride(quote.symbol, 'sell', ($event.target as HTMLInputElement).value)"></td><td>{{ quote.volumeKnown === false ? '—' : amount(quote.units24h) }}</td><td><svg v-if="quote.history.length > 1" class="price-sparkline" viewBox="0 0 100 24" role="img" :aria-label="`${quote.history.length} hourly sell prices; ${quote.history[0]} to ${quote.sellPrice ?? quote.price}`"><polyline :points="sparklinePoints(quote.history)" /></svg><small v-else class="history-pending">Collecting</small></td><td :class="quote.changeSincePreviousPercent === null ? '' : quote.changeSincePreviousPercent >= 0 ? 'profit-positive' : 'profit-negative'">{{ quote.changeSincePreviousPercent === null ? 'Collecting order-book history' : `${quote.changeSincePreviousPercent >= 0 ? '+' : ''}${quote.changeSincePreviousPercent.toFixed(2)}%` }}</td><td><button v-if="priceOverrides[quote.symbol]" class="price-reset" @click="resetPriceOverrides(quote.symbol)">Reset</button></td></tr>
+              <tr v-for="quote in filteredMarketQuotes" :key="quote.symbol"><th scope="row"><ItemIcon class="table-item-icon" :item-id="quote.symbol" :name="quote.name" />{{ quote.name }}</th><td>{{ quote.symbol }}</td><td>{{ '$' + quote.price.toFixed(2) }}</td><td>{{ bookPrice(quote, 'buy') === undefined ? '$...' : `${usesOppositeSide(quote, 'buy') ? '≈' : ''}$${bookPrice(quote, 'buy')!.toFixed(2)}` }}</td><td>{{ bookPrice(quote, 'sell') === undefined ? '$...' : `${usesOppositeSide(quote, 'sell') ? '≈' : ''}$${bookPrice(quote, 'sell')!.toFixed(2)}` }}</td><td>{{ quote.suggestedSellOffer == null ? '$...' : '$' + quote.suggestedSellOffer.toFixed(2) }}</td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario buy price for ${quote.name}`" :placeholder="bookPrice(quote, 'buy')?.toFixed(2) ?? ''" :value="priceOverrides[quote.symbol]?.buy ?? ''" @change="setPriceOverride(quote.symbol, 'buy', ($event.target as HTMLInputElement).value)"></td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario sell price for ${quote.name}`" :placeholder="bookPrice(quote, 'sell')?.toFixed(2) ?? ''" :value="priceOverrides[quote.symbol]?.sell ?? ''" @change="setPriceOverride(quote.symbol, 'sell', ($event.target as HTMLInputElement).value)"></td><td>{{ quote.volumeKnown === false ? '—' : amount(quote.units24h) }}</td><td><svg v-if="quote.history.length > 1" class="price-sparkline" viewBox="0 0 100 24" role="img" :aria-label="`${quote.history.length} hourly sell prices; ${quote.history[0]} to ${quote.sellPrice ?? quote.price}`"><polyline :points="sparklinePoints(quote.history)" /></svg><small v-else class="history-pending">Collecting</small></td><td :class="quote.changeSincePreviousPercent === null ? '' : quote.changeSincePreviousPercent >= 0 ? 'profit-positive' : 'profit-negative'">{{ quote.changeSincePreviousPercent === null ? 'Collecting order-book history' : `${quote.changeSincePreviousPercent >= 0 ? '+' : ''}${quote.changeSincePreviousPercent.toFixed(2)}%` }}</td><td><button v-if="priceOverrides[quote.symbol]" class="price-reset" @click="resetPriceOverrides(quote.symbol)">Reset</button></td></tr>
               <tr v-if="!filteredMarketQuotes.length"><td colspan="12" class="table-empty">{{ marketData?.quotes.length ? 'No market quotes match this search.' : marketData?.refreshOutcome === 'failed' ? 'The hourly market update failed and no saved quotes are available yet.' : 'No market quotes are available.' }}</td></tr>
             </tbody></table></div>
           </div>
@@ -1541,7 +1565,7 @@ function linkPath(link: GraphConnection) {
       <aside class="inspector">
         <div class="inspector-top"><div><p class="eyebrow">PLAN OVERVIEW</p><h2>Network stats</h2></div></div>
         <div class="stat-grid"><div class="stat-card"><span>MACHINES</span><strong>{{ network.machineTotal }}</strong><small>across {{ nodes.length }} recipes</small></div><div class="stat-card"><span>CONNECTIONS</span><strong>{{ network.connectionRows.length }}</strong><small>material flows</small></div></div>
-        <section class="total-profit-card"><span>TOTAL PROFIT · PER MIN</span><strong :class="{ 'profit-positive': (totalProfitPerMinute ?? 0) > 0, 'profit-negative': (totalProfitPerMinute ?? 0) < 0 }">{{ profitLabel(totalProfitPerMinute) }}</strong><small>Surplus sales minus external input costs</small></section>
+        <section class="total-profit-card"><span>TOTAL PROFIT · PER MIN</span><strong :class="{ 'profit-positive': (totalProfitPerMinute ?? 0) > 0, 'profit-negative': (totalProfitPerMinute ?? 0) < 0 }">{{ profitLabel(totalProfitPerMinute, planEconomics.usesEstimate) }}</strong><small>{{ planEconomics.usesEstimate ? 'Estimate uses an opposite-side price or ticker reference where needed' : 'Surplus sales minus external input costs' }}</small></section>
         <section class="summary-section"><div class="section-heading"><div><span class="section-mark import-mark">↓</span><h3>External inputs</h3></div><span class="section-count">{{ network.external.length }}</span></div>
           <div v-if="network.external.length" class="resource-list"><div v-for="item in network.external" :key="item.id" class="resource-row"><ItemIcon class="resource-icon" :item-id="item.id" :name="item.name" /><span class="resource-name">{{ item.name }}</span><strong>{{ amount(item.amount) }} <small>/ min</small></strong></div></div>
           <p v-else class="summary-empty">Add machines to see required materials.</p>
