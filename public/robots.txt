@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://fishstix.uk/sitemap.xml
