@@ -1,0 +1,9 @@
+name = "capitalcalculator"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-20"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "capitalrift-db"
+database_id = "6659ddec-e89a-4d95-b8fa-645f9c42ce07"

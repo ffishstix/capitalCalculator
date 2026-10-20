@@ -7,12 +7,25 @@
     "build": "nuxt build",
     "preview": "nuxt preview",
     "db:import": "node scripts/import-data.mjs",
+    "prices:login": "node scripts/market-price-sync.mjs login",
+    "prices:refresh": "node scripts/market-price-sync.mjs refresh",
+    "prices:refresh:cloud": "node --env-file=.env scripts/market-price-sync.mjs refresh",
+    "images:refresh": "node scripts/machine-image-sync.mjs",
+    "images:export": "node scripts/export-machine-assets.mjs",
     "test": "node --test tests/*.test.js",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
-    "nuxt": "4.2.1",
+    "nuxt": "^4.4.8",
+    "playwright": "^1.64.1",
     "vue": "^3.5.42"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.5",
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.3.13",
+    "wrangler": "^4.151.3"
   }
 }

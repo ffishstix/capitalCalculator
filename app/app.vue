@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { calculateDemandByProducer, calculateNetworkSummary, consolidateOutputNodes as mergeDuplicateOutputs, machinesForDemand } from './utils/production-solver.js'
 type Ingredient = { item_id: string; name: string; quantity: number }
-type Recipe = { id: string; label: string; station: string; batch: number; rate: number; product_id: string; product: string; ingredients: Ingredient[] }
+type Recipe = { id: string; label: string; station: string; image_url?: string | null; batch: number; rate: number; product_id: string; product: string; ingredients: Ingredient[] }
 type MachineNode = { id: string; recipeId: string; x: number; y: number; machines: number }
 type Connection = { key: string; from: MachineNode; to: MachineNode; ingredient: Ingredient; produced: number }
 type GraphEndpoint = { id: string; x: number; y: number }
@@ -16,8 +16,8 @@ type PlanSnapshot = { nodes: MachineNode[]; connections: Record<string, string>;
 type TreeRow = { key: string; depth: number; kind: 'product' | 'ingredient'; name: string; detail: string; machines?: number; external?: boolean; nodeId?: string; hasChildren?: boolean; collapsed?: boolean }
 type ItemBalance = { id: string; name: string; produced: number; required: number; connected: number; external: number; surplus: number }
 type BuildingSummary = { id: string; name: string; recipeCount: number; machines: number; products: string[] }
-type MarketQuote = { symbol: string; name: string; price: number; units24h: number; volumeKnown?: boolean; dayChangePercent?: number | null; previousPrice: number | null; history: number[]; changeSincePreviousPercent: number | null }
-type MarketData = { asOf: string; refreshedAt: string | null; refreshOutcome: string; refreshIntervalHours: number; catalogueCoverage?: { priced: number; total: number }; quotes: MarketQuote[]; source: string }
+type MarketQuote = { symbol: string; name: string; price: number; buyPrice?: number | null; sellPrice?: number | null; suggestedSellOffer?: number | null; orderBookAsOf?: string | null; units24h: number; volumeKnown?: boolean; dayChangePercent?: number | null; previousPrice: number | null; history: number[]; changeSincePreviousPercent: number | null }
+type MarketData = { asOf: string; refreshedAt: string | null; refreshOutcome: string; refreshIntervalHours: number; catalogueCoverage?: { priced: number; total: number }; orderBookCoverage?: { priced: number; total: number }; quotes: MarketQuote[]; source: string }
 type OptimizerInputCost = { name: string; amountPerItem: number; unitCost: number; totalCost: number; routeRecipe?: Recipe }
 type OptimizerOpportunity = { recipe: Recipe; outputPrice: number; inputCostPerItem: number; marginPerItem: number; marginPercent: number; profitPerMinute: number; outputVolumeShare: number | undefined; inputCosts: OptimizerInputCost[]; routeRecipes: Map<string, Recipe> }
 type RecipeGroup = { id: string; name: string; recipes: Recipe[] }
@@ -34,8 +34,26 @@ const selectedCategory = ref('all')
 const viewSearch = ref('')
 const optimizerSearch = ref('')
 const activeView = ref<PlannerView>('network')
+const showPriceHistory = ref(false)
+const historyInitialSymbol = ref<string | undefined>()
+function openPriceHistory(symbol?: string) {
+  historyInitialSymbol.value = symbol
+  showPriceHistory.value = true
+  activeView.value = 'prices'
+}
 const plannerTabs: [PlannerView, string][] = [['network', 'Network Graph'], ['tree', 'Tree List'], ['items', 'Items'], ['buildings', 'Buildings'], ['targets', 'Targets'], ['prices', 'Prices']]
 const targetSections: [TargetSection, string][] = [['outputs', 'Outputs'], ['inputs', 'Inputs'], ['options', 'Options']]
+const stationColors: Record<string, string> = {
+  brick_kiln: '#cb8669', carpentry_bench: '#b69a65', chemical_plant: '#74b79e',
+  chip_fab: '#8a9ed5', electronics_bench: '#a48bd3', foundry: '#ca9079',
+  furnace: '#c77b72', gaming_workshop: '#bf8ec1', glazing_line: '#81b5bd',
+  hydraulics_shop: '#7dacc8', kitchen: '#c5a46b', loom: '#c18caa',
+  machine_shop: '#87a9bd', manufacturing_press: '#a993c3', metal_shop: '#9daab8',
+  mill: '#a7b879', oil_refinery: '#82b5a3', sawmill: '#8eb884',
+  steel_mill: '#a39db8', stonecutter: '#b8a88b',
+  vehicle_assembly_platform: '#8da6d0', vulcanizer: '#bf9a78'
+}
+function stationAccent(station?: string) { return stationColors[station ?? ''] ?? '#9aab9b' }
 const activeTargetSection = ref<TargetSection>('outputs')
 const productionTargets = ref<ProductionTarget[]>([])
 const importedInputs = ref<ImportedInput[]>([])
@@ -66,6 +84,7 @@ let moveFrame = 0
 let portMeasureFrame = 0
 let lastMarketFetch = 0
 let marketRequest: Promise<void> | undefined
+let marketRefreshTimer: ReturnType<typeof setInterval> | undefined
 const pending = ref(true)
 const error = ref('')
 const zoom = ref(100)
@@ -80,6 +99,7 @@ let extendingCanvas = false
 
 onMounted(async () => {
   document.addEventListener('keydown', searchShortcut)
+  marketRefreshTimer = setInterval(() => { void loadMarketPrices(true) }, 60 * 60 * 1000)
   try {
     const saved = localStorage.getItem(storageKey)
     if (saved) {
@@ -115,6 +135,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', searchShortcut)
+  if (marketRefreshTimer) clearInterval(marketRefreshTimer)
   if (saveTimer) clearTimeout(saveTimer)
   if (moveFrame) cancelAnimationFrame(moveFrame)
   if (portMeasureFrame) cancelAnimationFrame(portMeasureFrame)
@@ -883,7 +904,10 @@ const network = computed(() => calculateNetworkSummary(nodes.value, connections.
 const quoteByItemName = computed(() => new Map((marketData.value?.quotes ?? []).map(quote => [quote.name.trim().toLocaleLowerCase(), quote])))
 function priceFor(name: string, side: 'buy' | 'sell' = 'buy') {
   const quote = quoteByItemName.value.get(name.trim().toLocaleLowerCase())
-  return quote ? priceOverrides.value[quote.symbol]?.[side] ?? quote.price : undefined
+  if (!quote) return undefined
+  const override = priceOverrides.value[quote.symbol]?.[side]
+  if (override !== undefined) return override
+  return side === 'buy' ? quote.buyPrice ?? undefined : quote.sellPrice ?? undefined
 }
 function itemPrice(name: string, side: 'buy' | 'sell' = 'buy') {
   const price = priceFor(name, side)
@@ -1017,7 +1041,7 @@ const planEconomics = computed(() => {
       return { ...item, quote, price, valuePerMinute: price === undefined ? undefined : price * item.amount }
     })
     const knownTotal = rows.reduce((sum, row) => sum + (row.valuePerMinute ?? 0), 0)
-    return { rows, knownTotal, pricedCount: rows.filter(row => row.quote).length, unpricedCount: rows.filter(row => !row.quote).length }
+    return { rows, knownTotal, pricedCount: rows.filter(row => row.price !== undefined).length, unpricedCount: rows.filter(row => row.price === undefined).length }
   }
   const sales = valueRows(network.value.surplus, 'sell')
   const costs = valueRows(network.value.external, 'buy')
@@ -1108,7 +1132,9 @@ function buildOptimizedChain(opportunity: OptimizerOpportunity) {
   void nextTick(centerCanvas)
 }
 
-const viewTitle = computed(() => ({ network: 'Network Graph', tree: 'Tree List', items: 'Items', buildings: 'Buildings', targets: 'Production Targets', prices: 'Prices' })[activeView.value])
+const viewTitle = computed(() => activeView.value === 'prices' && showPriceHistory.value
+  ? 'History'
+  : ({ network: 'Network Graph', tree: 'Tree List', items: 'Items', buildings: 'Buildings', targets: 'Production Targets', prices: 'Prices' })[activeView.value])
 const catalogueAgeDays = computed(() => metadata.value ? Math.max(0, Math.floor((Date.now() - new Date(metadata.value.retrievedAt).getTime()) / 86_400_000)) : 0)
 const importedInputBalances = computed(() => importedInputs.value.map(input => {
   const item = materialOptions.value.find(candidate => candidate.id === input.itemId)
@@ -1333,14 +1359,14 @@ function linkPath(link: GraphConnection) {
         <label class="search-box"><span class="search-icon">⌕</span><input v-model="search" type="search" placeholder="Find an item or recipe" autocomplete="off"><kbd>/</kbd></label>
         <div class="category-strip" aria-label="Recipe categories">
           <button class="category-chip" :class="{ active: selectedCategory === 'all' }" @click="selectedCategory = 'all'">All <span>{{ recipes.length }}</span></button>
-          <button v-for="group in recipeGroups" :key="group.id" class="category-chip" :class="{ active: selectedCategory === group.id }" :title="group.name" @click="selectedCategory = group.id">{{ group.name }} <span>{{ group.recipes.length }}</span></button>
+          <button v-for="group in recipeGroups" :key="group.id" class="category-chip factory-chip" :class="{ active: selectedCategory === group.id }" :style="{ '--station-accent': stationAccent(group.id) }" :title="group.name" @click="selectedCategory = group.id">{{ group.name }} <span>{{ group.recipes.length }}</span></button>
         </div>
         <div class="catalog-heading"><span>RECIPE CATALOGUE</span><span>{{ filteredRecipes.length }}</span></div>
         <div class="catalog-list">
           <div v-for="group in groupedRecipes" :key="group.id" class="recipe-group">
-            <div class="recipe-group-heading"><span>{{ group.name }}</span><span>{{ group.recipes.length }}</span></div>
+            <div class="recipe-group-heading" :style="{ '--station-accent': stationAccent(group.id) }"><span>{{ group.name }}</span><span>{{ group.recipes.length }}</span></div>
             <button v-for="recipe in group.recipes" :key="recipe.id" class="catalog-item" draggable="true" @click="addRecipe(recipe)" @dragstart="startCatalogDrag($event, recipe)" @dragend="finishCatalogDrag">
-              <span class="item-icon">{{ recipe.product.slice(0, 1).toUpperCase() }}</span>
+              <span class="item-icon"><img v-if="recipe.image_url" :src="recipe.image_url" alt="" loading="lazy"><template v-else>{{ recipe.product.slice(0, 1).toUpperCase() }}</template></span>
               <span class="catalog-copy"><strong>{{ recipe.product }}</strong><small>{{ recipe.label }}</small></span>
               <span class="add-icon">+</span>
             </button>
@@ -1351,9 +1377,9 @@ function linkPath(link: GraphConnection) {
         <div class="sidebar-tip"><span class="tip-dot" />Click or drag recipes onto the graph. Select nodes to move them together; right-click and drag to pan, or hold Ctrl and scroll to zoom.</div>
       </aside>
 
-      <section class="main-area">
+      <section class="main-area" :class="{ 'history-main': activeView === 'prices' && showPriceHistory }">
         <div class="plan-toolbar">
-          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong></div>
+          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
           <div v-if="activeView === 'network'" class="toolbar-actions"><label class="density-control"><span>Detailed</span><input v-model.number="compactGraph" type="range" min="0" max="1" step="1" aria-label="Graph detail"><span>Compact</span></label><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="icon-button" title="Center machines" aria-label="Center machines" @click="centerCanvas">⌖</button></div>
           <span v-else-if="activeView === 'prices'" class="view-count">{{ marketData ? `${marketData.catalogueCoverage?.priced ?? marketData.quotes.length} / ${marketData.catalogueCoverage?.total ?? metadata?.itemCount ?? '?'} ITEMS PRICED` : 'LIVE MARKET' }}</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
         </div>
@@ -1378,9 +1404,9 @@ function linkPath(link: GraphConnection) {
                 <span class="port flow-panel-port left-port" /><span class="flow-panel-name">{{ item.name }}</span><small>{{ amount(item.rate) }} / min</small><strong>{{ itemPrice(item.name, 'sell') }}</strong>
               </div>
             </article>
-            <article v-for="node in nodes" :key="node.id" :ref="element => setNodeElement(node.id, element)" class="machine-card" :class="{ selected: selectedNodeIds.includes(node.id), compact: compactGraph }" :style="{ left: `${node.x - boardBounds.left}px`, top: `${node.y - boardBounds.top}px` }" @pointerdown.stop="startNodeMove($event, node)" @pointermove="moveNode" @pointerup="finishNodeMove" @pointercancel="finishNodeMove">
+            <article v-for="node in nodes" :key="node.id" :ref="element => setNodeElement(node.id, element)" class="machine-card" :class="{ selected: selectedNodeIds.includes(node.id), compact: compactGraph }" :style="{ left: `${node.x - boardBounds.left}px`, top: `${node.y - boardBounds.top}px`, '--station-accent': stationAccent(recipeFor(node)?.station) }" @pointerdown.stop="startNodeMove($event, node)" @pointermove="moveNode" @pointerup="finishNodeMove" @pointercancel="finishNodeMove">
               <header class="machine-head">
-                <span class="grip" aria-hidden="true">⠿</span><span class="station-tag">{{ recipeFor(node)?.station.replaceAll('_', ' ') }}</span>
+                <span class="grip" aria-hidden="true">⠿</span><img v-if="recipeFor(node)?.image_url" class="machine-thumbnail" :src="recipeFor(node)?.image_url ?? undefined" alt=""><span class="station-tag">{{ recipeFor(node)?.station.replaceAll('_', ' ') }}</span>
                 <button class="delete-node" :aria-label="`Remove ${recipeFor(node)?.product}`" title="Remove machine" @click="removeNode(node.id)">×</button>
               </header>
               <div v-if="compactGraph" class="compact-body">
@@ -1406,15 +1432,15 @@ function linkPath(link: GraphConnection) {
                 </div>
               </div>
             </article>
-            <article v-if="dragPreview && draggedRecipe" class="machine-card drag-preview" :style="{ left: `${dragPreview.x - boardBounds.left}px`, top: `${dragPreview.y - boardBounds.top}px` }">
-              <header class="machine-head"><span class="grip">＋</span><span class="station-tag">{{ draggedRecipe.station.replaceAll('_', ' ') }}</span></header>
+            <article v-if="dragPreview && draggedRecipe" class="machine-card drag-preview" :style="{ left: `${dragPreview.x - boardBounds.left}px`, top: `${dragPreview.y - boardBounds.top}px`, '--station-accent': stationAccent(draggedRecipe.station) }">
+              <header class="machine-head"><span class="grip">＋</span><img v-if="draggedRecipe.image_url" class="machine-thumbnail" :src="draggedRecipe.image_url" alt=""><span class="station-tag">{{ draggedRecipe.station.replaceAll('_', ' ') }}</span></header>
               <div class="machine-body"><p class="node-label">NEW PRODUCTION MACHINE</p><h2>{{ draggedRecipe.product }}</h2><p class="drop-hint">Release to add this output</p></div>
             </article>
             <div v-if="!nodes.length" class="canvas-empty" :style="{ left: `${-boardBounds.left}px`, top: `${-boardBounds.top}px` }"><div class="empty-symbol"><span>＋</span></div><h2>Your factory starts here</h2><p>Add a recipe from the catalogue to place your first machine.</p><div class="empty-shortcuts"><kbd>Click</kbd><span>to add</span><span class="shortcut-sep">·</span><kbd>Drag recipe</kbd><span>onto grid</span></div></div>
           </div>
           <div v-if="selecting" class="selection-box" :style="selectionBoxStyle" />
         </div>
-        <section v-if="activeView !== 'network'" class="data-view">
+        <section v-if="activeView !== 'network'" class="data-view" :class="{ 'prices-data-view': activeView === 'prices' }">
           <section v-if="activeView === 'targets'" class="target-panel">
             <div class="target-intro"><div><p class="eyebrow">PRODUCTION REQUEST</p><h2>Plan what you need</h2></div><p>Set output rates, then generate the machines and ingredient chain.</p></div>
             <nav class="target-tabs" aria-label="Production target sections"><button v-for="section in targetSections" :key="section[0]" :class="{ active: activeTargetSection === section[0] }" @click="activeTargetSection = section[0]">{{ section[1] }}</button></nav>
@@ -1450,9 +1476,10 @@ function linkPath(link: GraphConnection) {
               <label class="target-option"><input v-model="preserveExistingPlan" type="checkbox" @focus="recordPlanChange"><span><strong>Keep the current plan</strong><small>Reuse matching producers and add requested outputs to the existing graph.</small></span></label>
             </div>
           </section>
+          <PriceHistory v-else-if="activeView === 'prices' && showPriceHistory" :quotes="marketData?.quotes ?? []" :recipes="recipes" :nodes="nodes" :connections="connections" :plan-flows="{ sales: network.surplus, costs: network.external }" :initial-symbol="historyInitialSymbol" @close="showPriceHistory = false" />
           <div v-else-if="activeView === 'prices'" class="prices-page">
-            <div class="table-intro"><div><p class="eyebrow">LIVE MARKET</p><h2>Market prices</h2></div><span v-if="marketData" class="market-freshness">Quotes as of {{ new Date(marketData.asOf).toLocaleString() }}<small v-if="nextMarketCheck">Next eligible update {{ nextMarketCheck }}</small><small v-if="marketData.refreshOutcome === 'failed'" class="market-refresh-failed">Daily refresh failed; showing saved quotes.</small></span><span v-else>Current public quotes</span></div>
-            <p class="prices-note">Quotes are served from the local database. The signed-in game ticker provides all {{ marketData?.catalogueCoverage?.total ?? metadata?.itemCount ?? '?' }} catalogue item prices; refresh it from the logged-in game at most once every 24 hours using the project sync bookmarklet. The trend shows up to 30 days of saved snapshots. Buy and sell assumptions stay local to your browser. Trading volume is not included in the game item ticker. <a href="https://play.capitalrift.com/" target="_blank" rel="noreferrer">Source ↗</a></p>
+            <div class="table-intro"><div><p class="eyebrow">LIVE MARKET</p><h2>Market prices</h2></div><span v-if="marketData" class="market-freshness">Order books as of {{ new Date(marketData.asOf).toLocaleString() }}<small v-if="nextMarketCheck">Next eligible update {{ nextMarketCheck }}</small><small v-if="marketData.refreshOutcome === 'failed'" class="market-refresh-failed">Hourly order-book refresh failed; showing saved prices.</small><small v-else-if="marketData.refreshOutcome === 'partial'" class="market-refresh-failed">Some order books failed; showing the last saved prices for those items.</small></span><span v-else>Current public quotes</span></div>
+            <p class="prices-note">Quotes are served from the local database. Ticker references cover {{ marketData?.catalogueCoverage?.priced ?? 0 }}/{{ marketData?.catalogueCoverage?.total ?? metadata?.itemCount ?? '?' }} items; order books cover {{ marketData?.orderBookCoverage?.priced ?? 0 }}/{{ marketData?.orderBookCoverage?.total ?? metadata?.itemCount ?? '?' }}. Quick buy, instant sell, and suggested offer need the signed-in game browser sync. Run <code>npm run prices:login</code> once, then <code>npm run prices:refresh</code> to collect new quotes. Select <strong>History</strong> above for detailed charts. Buy and sell assumptions stay local to your browser. <a href="https://play.capitalrift.com/" target="_blank" rel="noreferrer">Source ↗</a></p>
             <section class="economics-section">
               <div class="economics-heading"><div><p class="eyebrow">CURRENT PLAN</p><h3>Profit and production value</h3></div><span>{{ planEconomics.sales.pricedCount + planEconomics.costs.pricedCount }} priced · {{ planEconomics.sales.unpricedCount + planEconomics.costs.unpricedCount }} unpriced flows</span></div>
               <div class="economics-cards">
@@ -1468,7 +1495,7 @@ function linkPath(link: GraphConnection) {
             </section>
             <section class="price-optimizer">
               <div class="economics-heading"><div><p class="eyebrow">RECIPE OPTIMIZER</p><h3>Most profitable production routes</h3></div><span>{{ optimizerOpportunities.length }} fully priced recipes</span></div>
-              <p class="prices-note">Ranks every recipe whose output and complete ingredient route can be priced. Ingredient costs use the cheapest known buy-or-craft route; profit per minute assumes one machine running continuously. Your local buy/sell assumptions above are applied immediately. Volume share compares that machine’s daily output with recent traded units.</p>
+              <p class="prices-note">Profit uses the output’s highest current buy bid (instant sell) minus the lowest sell ask for each purchased input (quick buy). Ingredient costs use the cheapest known buy-or-craft route; profit per minute assumes one machine running continuously. A suggested sell offer undercuts the lowest ask by $0.01. Your local buy/sell assumptions above are applied immediately.</p>
               <label class="view-search optimizer-search"><span>⌕</span><input v-model="optimizerSearch" type="search" placeholder="Search products, recipes, or buildings"></label>
               <div class="table-scroll optimizer-table-scroll"><table class="planner-table optimizer-table"><thead><tr><th>Product / inputs</th><th>Recipe · building</th><th>Sell / item</th><th>Input cost / item</th><th>Margin / item</th><th>Margin</th><th>Profit / min</th><th>Est. share of daily volume</th><th>Action</th></tr></thead><tbody>
                 <tr v-for="opportunity in filteredOptimizerOpportunities" :key="opportunity.recipe.id" :class="{ 'loss-row': opportunity.marginPerItem < 0 }"><td><strong class="optimizer-product">{{ opportunity.recipe.product }}</strong><details class="optimizer-details"><summary>{{ opportunity.inputCosts.length }} input{{ opportunity.inputCosts.length === 1 ? '' : 's' }} · show cost breakdown</summary><div v-for="input in opportunity.inputCosts" :key="input.name" class="optimizer-input-detail"><span>{{ input.name }} · {{ amount(input.amountPerItem) }}/item<span v-if="input.routeRecipe"> via {{ input.routeRecipe.label }}</span></span><b>{{ '$' + input.unitCost.toFixed(2) }}/unit · {{ '$' + input.totalCost.toFixed(2) }}</b></div></details></td><td>{{ opportunity.recipe.label }}<small class="optimizer-building">{{ opportunity.recipe.station.replaceAll('_', ' ') }}</small></td><td>{{ '$' + opportunity.outputPrice.toFixed(2) }}</td><td>{{ '$' + opportunity.inputCostPerItem.toFixed(2) }}</td><td :class="opportunity.marginPerItem >= 0 ? 'profit-positive' : 'profit-negative'">{{ (opportunity.marginPerItem < 0 ? '−$' : '+$') + Math.abs(opportunity.marginPerItem).toFixed(2) }}</td><td>{{ opportunity.marginPercent.toFixed(1) }}%</td><td :class="opportunity.profitPerMinute >= 0 ? 'profit-positive' : 'profit-negative'">{{ profitLabel(opportunity.profitPerMinute) }}</td><td :class="volumeShareClass(opportunity.outputVolumeShare)">{{ opportunity.outputVolumeShare === undefined ? '$...' : `≈${opportunity.outputVolumeShare.toFixed(1)}%` }}</td><td><button class="optimizer-build" @click="buildOptimizedChain(opportunity)">Add chain</button></td></tr>
@@ -1478,9 +1505,9 @@ function linkPath(link: GraphConnection) {
             </section>
             <div class="prices-controls"><label class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" placeholder="Search market quotes"></label><button class="button" :disabled="marketLoading" @click="loadMarketPrices(true)">{{ marketLoading ? 'Loading…' : 'Check for due update' }}</button></div>
             <p v-if="marketLoading && !marketData" class="table-empty prices-status">Loading live quotes…</p><p v-else-if="marketError" class="table-empty prices-status" role="alert">{{ marketError }}</p>
-            <div v-else class="table-scroll market-table-scroll"><table class="planner-table market-table"><thead><tr><th>Item</th><th>Ticker</th><th>Market price</th><th>Your buy</th><th>Your sell</th><th>Units traded · 24h</th><th>30-day trend</th><th>Change since prior daily snapshot</th><th></th></tr></thead><tbody>
-              <tr v-for="quote in filteredMarketQuotes" :key="quote.symbol"><th scope="row"><span class="table-item-icon">{{ quote.name.slice(0, 1) }}</span>{{ quote.name }}</th><td>{{ quote.symbol }}</td><td>{{ '$' + quote.price.toFixed(2) }}</td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario buy price for ${quote.name}`" :placeholder="quote.price.toFixed(2)" :value="priceOverrides[quote.symbol]?.buy ?? ''" @change="setPriceOverride(quote.symbol, 'buy', ($event.target as HTMLInputElement).value)"></td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario sell price for ${quote.name}`" :placeholder="quote.price.toFixed(2)" :value="priceOverrides[quote.symbol]?.sell ?? ''" @change="setPriceOverride(quote.symbol, 'sell', ($event.target as HTMLInputElement).value)"></td><td>{{ quote.volumeKnown === false ? '—' : amount(quote.units24h) }}</td><td><svg v-if="quote.history.length > 1" class="price-sparkline" viewBox="0 0 100 24" role="img" :aria-label="`${quote.history.length} daily prices; ${quote.history[0]} to ${quote.price}`"><polyline :points="sparklinePoints(quote.history)" /></svg><small v-else class="history-pending">Collecting</small></td><td :class="quote.changeSincePreviousPercent === null ? '' : quote.changeSincePreviousPercent >= 0 ? 'profit-positive' : 'profit-negative'">{{ quote.changeSincePreviousPercent === null ? 'Collecting daily snapshots' : `${quote.changeSincePreviousPercent >= 0 ? '+' : ''}${quote.changeSincePreviousPercent.toFixed(2)}%` }}</td><td><button v-if="priceOverrides[quote.symbol]" class="price-reset" @click="resetPriceOverrides(quote.symbol)">Reset</button></td></tr>
-              <tr v-if="!filteredMarketQuotes.length"><td colspan="9" class="table-empty">{{ marketData?.quotes.length ? 'No market quotes match this search.' : marketData?.refreshOutcome === 'failed' ? 'The daily market update failed and no saved quotes are available yet.' : 'No market quotes are available.' }}</td></tr>
+            <div v-else class="table-scroll market-table-scroll"><table class="planner-table market-table"><thead><tr><th>Item</th><th>Ticker</th><th>Ticker reference</th><th>Quick buy · best ask</th><th>Instant sell · best bid</th><th>Suggested sell offer</th><th>Your buy</th><th>Your sell</th><th>Units traded · 24h</th><th>30-day sell trend</th><th>Change since prior snapshot</th><th></th></tr></thead><tbody>
+              <tr v-for="quote in filteredMarketQuotes" :key="quote.symbol"><th scope="row"><span class="table-item-icon">{{ quote.name.slice(0, 1) }}</span>{{ quote.name }}</th><td>{{ quote.symbol }}</td><td>{{ '$' + quote.price.toFixed(2) }}</td><td>{{ quote.buyPrice == null ? '$...' : '$' + quote.buyPrice.toFixed(2) }}</td><td>{{ quote.sellPrice == null ? '$...' : '$' + quote.sellPrice.toFixed(2) }}</td><td>{{ quote.suggestedSellOffer == null ? '$...' : '$' + quote.suggestedSellOffer.toFixed(2) }}</td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario buy price for ${quote.name}`" :placeholder="quote.buyPrice == null ? '' : quote.buyPrice.toFixed(2)" :value="priceOverrides[quote.symbol]?.buy ?? ''" @change="setPriceOverride(quote.symbol, 'buy', ($event.target as HTMLInputElement).value)"></td><td><input class="price-override-input" type="number" min="0" step="any" :aria-label="`Scenario sell price for ${quote.name}`" :placeholder="quote.sellPrice == null ? '' : quote.sellPrice.toFixed(2)" :value="priceOverrides[quote.symbol]?.sell ?? ''" @change="setPriceOverride(quote.symbol, 'sell', ($event.target as HTMLInputElement).value)"></td><td>{{ quote.volumeKnown === false ? '—' : amount(quote.units24h) }}</td><td><svg v-if="quote.history.length > 1" class="price-sparkline" viewBox="0 0 100 24" role="img" :aria-label="`${quote.history.length} hourly sell prices; ${quote.history[0]} to ${quote.sellPrice ?? quote.price}`"><polyline :points="sparklinePoints(quote.history)" /></svg><small v-else class="history-pending">Collecting</small></td><td :class="quote.changeSincePreviousPercent === null ? '' : quote.changeSincePreviousPercent >= 0 ? 'profit-positive' : 'profit-negative'">{{ quote.changeSincePreviousPercent === null ? 'Collecting order-book history' : `${quote.changeSincePreviousPercent >= 0 ? '+' : ''}${quote.changeSincePreviousPercent.toFixed(2)}%` }}</td><td><button v-if="priceOverrides[quote.symbol]" class="price-reset" @click="resetPriceOverrides(quote.symbol)">Reset</button></td></tr>
+              <tr v-if="!filteredMarketQuotes.length"><td colspan="12" class="table-empty">{{ marketData?.quotes.length ? 'No market quotes match this search.' : marketData?.refreshOutcome === 'failed' ? 'The hourly market update failed and no saved quotes are available yet.' : 'No market quotes are available.' }}</td></tr>
             </tbody></table></div>
           </div>
           <label v-else-if="activeView === 'items' || activeView === 'buildings'" class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" :placeholder="activeView === 'items' ? 'Search planned items' : 'Search buildings or products'"></label>
@@ -1503,7 +1530,7 @@ function linkPath(link: GraphConnection) {
           <div v-else-if="activeView === 'buildings'" class="table-panel">
             <div class="table-intro"><div><p class="eyebrow">PRODUCTION SITES</p><h2>Building catalogue</h2></div><span>{{ network.machineTotal }} machines in plan</span></div>
             <div class="table-scroll"><table class="planner-table"><thead><tr><th>Building</th><th>Recipes</th><th>In plan</th><th>Products made here</th></tr></thead><tbody>
-              <tr v-for="building in buildingSummaries" :key="building.id"><th scope="row" class="building-name">{{ building.name }}</th><td>{{ building.recipeCount }}</td><td><span class="machine-pill">{{ building.machines }} machine{{ building.machines === 1 ? '' : 's' }}</span></td><td class="products-cell">{{ building.products.join(', ') }}</td></tr>
+              <tr v-for="building in buildingSummaries" :key="building.id"><th scope="row" class="building-name"><img v-if="recipes.find(recipe => recipe.station === building.id)?.image_url" class="building-thumbnail" :src="recipes.find(recipe => recipe.station === building.id)?.image_url ?? undefined" alt="">{{ building.name }}</th><td>{{ building.recipeCount }}</td><td><span class="machine-pill">{{ building.machines }} machine{{ building.machines === 1 ? '' : 's' }}</span></td><td class="products-cell">{{ building.products.join(', ') }}</td></tr>
               <tr v-if="!buildingSummaries.length"><td colspan="4" class="table-empty">No buildings match this search.</td></tr>
             </tbody></table></div>
           </div>
@@ -1549,4 +1576,18 @@ function linkPath(link: GraphConnection) {
 .economics-section,.price-optimizer{margin:18px 0 24px;padding:16px;border:1px solid #2c382f;border-radius:7px;background:linear-gradient(145deg,#171f19,#141a16)}.economics-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:13px}.economics-heading .eyebrow{margin-bottom:4px}.economics-heading h3{margin:0;color:#dce6dd;font-size:14px;font-weight:600}.economics-heading>span{color:#829085;font:8px 'DM Mono',monospace;white-space:nowrap}.economics-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.economics-card{min-width:0;display:flex;flex-direction:column;gap:7px;padding:12px;border:1px solid #303b32;border-radius:5px;background:#1a231c}.economics-card>span{color:#8b9b8e;font:8px 'DM Mono',monospace;letter-spacing:.06em}.economics-card>strong{overflow:hidden;color:#d9e3da;font:17px 'DM Mono',monospace;text-overflow:ellipsis;white-space:nowrap}.economics-card>small{color:#7f8c81;font-size:9px;line-height:1.4}.economics-card.net-card{border-color:#405541;background:#1d2a20}.economics-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:15px}.economics-list{min-width:0}.economics-list h4{margin:0 0 7px;color:#a8b8aa;font-size:10px;font-weight:500}.economics-row{display:grid;grid-template-columns:minmax(75px,1fr) auto auto;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #273129;font-size:9px}.economics-row>span{overflow:hidden;color:#d0d9d1;text-overflow:ellipsis;white-space:nowrap}.economics-row>small{color:#849186;font:8px 'DM Mono',monospace;white-space:nowrap}.economics-row>strong{color:#b8c9ba;font:8px 'DM Mono',monospace;white-space:nowrap}.economics-empty{margin:8px 0;color:#758277;font-size:9px}.economics-disclaimer{margin:13px 0 0;color:#718074;font-size:8px;line-height:1.5}.price-optimizer{padding-bottom:12px}.price-optimizer>.prices-note{margin-top:-4px}.optimizer-search{max-width:440px;margin-bottom:10px}.optimizer-table-scroll{max-height:540px;overflow:auto}.optimizer-table{min-width:900px}.optimizer-table td{vertical-align:top}.optimizer-table th{position:sticky;top:0;z-index:1;background:#1b231d}.optimizer-table td:nth-child(n+3):nth-child(-n+7){font:9px 'DM Mono',monospace;white-space:nowrap}.optimizer-table .loss-row{background:#251c1b}.optimizer-product{color:#dce6dd;font-size:10px;font-weight:600}.optimizer-building{display:block;margin-top:4px;color:#859287;font-size:8px;text-transform:capitalize}.optimizer-details{margin-top:5px;color:#91a092;font-size:8px}.optimizer-details summary{cursor:pointer;white-space:nowrap}.optimizer-details summary:hover{color:#c2d4c3}.optimizer-input-detail{display:flex;justify-content:space-between;gap:14px;padding:5px 7px;border-top:1px solid #303a32;color:#9aa79c;font:8px 'DM Sans',sans-serif}.optimizer-input-detail b{flex:none;color:#b6c5b7;font:8px 'DM Mono',monospace}.optimizer-table .optimizer-build{margin:0;white-space:nowrap}.optimizer-footnote{margin:10px 0 0;color:#758277;font-size:8px;line-height:1.5}.prices-controls{margin-top:18px;padding-top:12px;border-top:1px solid #29332b}@media(max-width:700px){.economics-section,.price-optimizer{padding:12px}.economics-heading{align-items:flex-start;flex-direction:column}.economics-cards{grid-template-columns:1fr}.economics-columns{grid-template-columns:1fr}.economics-row{grid-template-columns:minmax(65px,1fr) auto auto;gap:6px}.economics-row>small,.economics-row>strong{font-size:7px}}
 .optimizer-table{min-width:1020px}.optimizer-table td{vertical-align:top}.optimizer-table td:nth-child(n+3):nth-child(-n+8){font:9px 'DM Mono',monospace;white-space:nowrap}.liquidity-high{color:#e2a092!important}.liquidity-watch{color:#e0c17e!important}.economics-rate,.liquidity-note{display:block;margin-top:3px;color:#849186;font:8px 'DM Mono',monospace}.market-table-scroll{overflow:auto}.market-table{min-width:1250px}.market-table td:nth-child(2),.market-table td:nth-child(3),.market-table td:nth-child(6),.market-table td:nth-child(8){font:9px 'DM Mono',monospace;white-space:nowrap}.price-sparkline{width:74px;height:20px;overflow:visible}.price-sparkline polyline{fill:none;stroke:#9fcda1;stroke-width:2;vector-effect:non-scaling-stroke}.history-pending{color:#728075;font:8px 'DM Mono',monospace}.price-override-input{width:90px;height:28px;border:1px solid #354139;border-radius:4px;background:#111713;color:#dbe2db;padding:0 6px;font:9px 'DM Mono',monospace}.price-override-input::placeholder{color:#617064}.price-reset{border:1px solid #435244;border-radius:4px;background:#202a22;color:#a8c8aa;padding:4px 7px;font:8px 'DM Sans',sans-serif;cursor:pointer}.price-reset:hover{border-color:#719174;color:#d2e6d2}
 .market-freshness{display:flex;flex-direction:column;gap:4px;text-align:right;color:#7d8b7f;font:8px 'DM Mono',monospace}.market-freshness small{font-size:7px}.market-refresh-failed{color:#e2a092}
+.prices-data-view,.prices-page *{scrollbar-width:thin;scrollbar-color:#526553 #171d19}.prices-data-view::-webkit-scrollbar,.prices-page *::-webkit-scrollbar{width:8px;height:8px}.prices-data-view::-webkit-scrollbar-track,.prices-page *::-webkit-scrollbar-track{border-radius:6px;background:#171d19}.prices-data-view::-webkit-scrollbar-thumb,.prices-page *::-webkit-scrollbar-thumb{border:2px solid #171d19;border-radius:6px;background:#526553}.prices-data-view::-webkit-scrollbar-thumb:hover,.prices-page *::-webkit-scrollbar-thumb:hover{background:#769276}
+.item-icon img{width:100%;height:100%;object-fit:contain}.machine-thumbnail{width:25px;height:25px;flex:none;object-fit:contain}.building-thumbnail{width:38px;height:38px;vertical-align:middle;object-fit:contain;margin-right:10px}
+.machine-card{background:linear-gradient(100deg,color-mix(in srgb,var(--station-accent) 8%,#1a211c),#1a211c 78%);border-color:color-mix(in srgb,var(--station-accent) 42%,#3a463c)}
+.machine-card:hover{border-color:color-mix(in srgb,var(--station-accent) 72%,#556651)}
+.machine-card .machine-head{background:color-mix(in srgb,var(--station-accent) 17%,#202821);box-shadow:inset 0 3px var(--station-accent)}
+.machine-card .station-tag{color:color-mix(in srgb,var(--station-accent) 70%,#dce3dd)}
+.machine-card.selected{border-color:#89bd8d;box-shadow:0 0 0 2px #80b58755,0 8px 26px #0005}
+.category-chip.factory-chip::before{content:'';width:6px;height:6px;flex:none;border-radius:50%;background:var(--station-accent)}
+.category-chip.factory-chip.active{border-color:color-mix(in srgb,var(--station-accent) 52%,#607f61);background:color-mix(in srgb,var(--station-accent) 14%,#263428)}
+.recipe-group-heading{border-left:2px solid var(--station-accent);padding-left:7px}
+.recipe-group-heading>span:first-child{color:color-mix(in srgb,var(--station-accent) 62%,#dce3dd)}
+.machine-card.drag-preview{border-color:var(--station-accent)}
+.plan-title{display:flex;align-items:center;min-width:0;gap:8px}.history-toolbar-button{display:inline-flex;align-items:center;gap:6px;margin-left:13px;padding:6px 10px;border:1px solid #527458;border-radius:5px;background:linear-gradient(180deg,#2d4432,#203427);color:#d7ebd9;font:10px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}.history-toolbar-button:hover,.history-toolbar-button.active{border-color:#91c598;background:#35513a;color:#f1fff1}.history-toolbar-button span{font-size:12px;color:#a5d3aa}.history-toolbar-button:focus-visible{outline:2px solid #abddb1;outline-offset:2px}
+@media(max-width:700px){.main-area.history-main{height:auto;min-height:0}.main-area.history-main .prices-data-view{overflow:visible;flex:none}}
 </style>

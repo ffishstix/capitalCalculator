@@ -1,0 +1,1 @@
+export const machineAssets = new Set(["brick_kiln","carpentry_bench","chemical_plant","chip_fab","electronics_bench","foundry","furnace","gaming_workshop","glazing_line","hydraulics_shop","kitchen","loom","machine_shop","manufacturing_press","metal_shop","mill","oil_refinery","sawmill","steel_mill","stonecutter","vehicle_assembly_platform","vulcanizer"])

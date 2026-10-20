@@ -6,6 +6,14 @@ CREATE TABLE IF NOT EXISTS source_imports (
   item_count INTEGER NOT NULL, recipe_count INTEGER NOT NULL, changelog_count INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS machine_images (
+  station_id TEXT PRIMARY KEY,
+  content_type TEXT NOT NULL CHECK(content_type = 'image/png'),
+  image_data BLOB NOT NULL,
+  sha256 TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  fetched_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS recipes (
   id TEXT PRIMARY KEY, label TEXT NOT NULL, station_id TEXT NOT NULL,
   product_item_id TEXT NOT NULL REFERENCES items(id), batch_output REAL NOT NULL CHECK(batch_output > 0),
@@ -59,8 +67,20 @@ CREATE TABLE IF NOT EXISTS market_item_sync_log (
   endpoint TEXT NOT NULL, quote_count INTEGER NOT NULL DEFAULT 0,
   outcome TEXT NOT NULL, error_message TEXT
 );
+CREATE TABLE IF NOT EXISTS market_item_order_books (
+  symbol TEXT PRIMARY KEY, best_bid REAL, best_bid_quantity REAL,
+  best_ask REAL, best_ask_quantity REAL, suggested_sell_offer REAL,
+  fetched_at TEXT NOT NULL, source_url TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS market_item_order_book_history (
+  id INTEGER PRIMARY KEY, symbol TEXT NOT NULL, best_bid REAL, best_ask REAL,
+  suggested_sell_offer REAL, quote_as_of TEXT NOT NULL, fetched_at TEXT NOT NULL,
+  UNIQUE(symbol, quote_as_of)
+);
 CREATE INDEX IF NOT EXISTS idx_market_item_quote_history_symbol_date
   ON market_item_quote_history(symbol, quote_as_of DESC);
+CREATE INDEX IF NOT EXISTS idx_market_item_order_book_history_symbol_date
+  ON market_item_order_book_history(symbol, quote_as_of DESC);
 CREATE INDEX IF NOT EXISTS idx_market_quote_history_symbol_date
   ON market_quote_history(symbol, quote_as_of DESC);
 INSERT OR IGNORE INTO market_quote_history
