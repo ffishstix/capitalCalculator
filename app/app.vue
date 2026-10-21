@@ -91,6 +91,7 @@ const zoom = ref(100)
 const storageKey = 'capitalrift-factory-plan-v1'
 const priceOverridesStorageKey = 'capitalrift-price-overrides-v1'
 const networkGuideStorageKey = 'capitalrift-network-guide-v1'
+const plannerGuideStorageKey = 'capitalrift-planner-guide-v2'
 const guideSteps = [
   { target: 'aquarium-recipe', title: 'Start with an Aquarium', body: 'Click Aquarium in the recipe catalogue to add your first machine to the graph.' },
   { target: 'flow', title: 'Follow the first flow', body: 'Inputs on the left feed the Aquarium in the middle. Its finished output appears on the right. The lines show where materials go.' },
@@ -99,8 +100,14 @@ const guideSteps = [
   { target: 'network-stats', title: 'Read your network stats', body: 'The right panel counts your machines and the material connections between them.' },
   { target: 'network-profit', title: 'See profit per minute', body: 'This is the estimated value of surplus output minus external input costs per minute. An estimate can use a reference price when a market side is missing.' },
   { target: 'network-inputs', title: 'Check external inputs', body: 'These are materials your network still needs from outside. Adding and connecting producer machines can reduce this list.' },
-  { target: 'network-surplus', title: 'Check surplus output', body: 'Surplus is production that is not used by another machine. You can leave it as a final output or connect it into another recipe.' }
+  { target: 'network-surplus', title: 'Check surplus output', body: 'Surplus is production that is not used by another machine. You can leave it as a final output or connect it into another recipe.' },
+  { target: 'plan-history', title: 'Undo and redo changes', body: 'Undo takes back your last plan change. Redo puts it back. These buttons become available as you edit the plan, and their history lasts while this page is open.' },
+  { target: 'plan-files', title: 'Save or load a plan file', body: 'Export downloads your current plan as a JSON file. Import loads a saved plan file and replaces the current plan, so export first if you want to keep it.' },
+  { target: 'plan-clear', title: 'Start over when you need to', body: 'Clear plan removes the machines and saved targets after you confirm. You can undo that change while this page remains open.' },
+  { target: 'tree-list', title: 'Read the Tree List', body: 'This is your graph written as a list. Each product has its ingredients indented beneath it; “external supply” means no producer is connected. The numbers are rates per minute. Use Show or Hide chain to shorten the list, or Graph to find a machine.' }
 ] as const
+const planActionsGuideStep = 8
+const treeGuideStep = guideSteps.length - 1
 const guideStep = ref(-1)
 const guideCard = ref<HTMLElement | null>(null)
 const guideCardStyle = ref<Record<string, string>>({})
@@ -145,7 +152,10 @@ onMounted(async () => {
     nodes.value = nodes.value.filter(node => catalog.some(recipe => recipe.id === node.recipeId))
     await nextTick()
     centerCanvas('auto')
-    if (!localStorage.getItem(networkGuideStorageKey) && aquariumRecipe.value) startNetworkGuide()
+    if (!localStorage.getItem(plannerGuideStorageKey) && aquariumRecipe.value) {
+      if (localStorage.getItem(networkGuideStorageKey)) startPlanActionsGuide()
+      else startNetworkGuide()
+    }
     // Load quotes with the planner so known prices are visible across every view,
     // not only after opening the Prices tab.
     void loadMarketPrices()
@@ -224,7 +234,7 @@ watch([nodes, connections, productionTargets, importedInputs, autoArrangeGenerat
 watch(activeView, view => {
   if (view === 'network') void nextTick(centerCanvas)
   if (view === 'prices') void loadMarketPrices()
-  if (view !== 'network' && guideStep.value >= 0) finishNetworkGuide()
+  if (guideStep.value >= 0 && view !== (guideStep.value === treeGuideStep ? 'tree' : 'network')) finishNetworkGuide()
 })
 watch(compactGraph, () => {
   portOffsets.clear()
@@ -245,7 +255,12 @@ function scheduleGuidePosition() {
     const clamp = (value: number, max: number) => Math.max(12, Math.min(value, max - 12))
     let left: number
     let top: number
-    if (guideStep.value === 1 || (guideStep.value === 2 && window.innerWidth <= 700)) {
+    if (guideStep.value === treeGuideStep) {
+      left = clamp(rect.right - cardWidth - 20, window.innerWidth - cardWidth)
+      top = window.innerWidth <= 700
+        ? clamp(rect.top - cardHeight - gap, window.innerHeight - cardHeight)
+        : clamp(rect.top + 20, window.innerHeight - cardHeight)
+    } else if (guideStep.value === 1 || (guideStep.value === 2 && window.innerWidth <= 700)) {
       left = clamp(rect.left + (rect.width - cardWidth) / 2, window.innerWidth - cardWidth)
       top = window.innerWidth <= 700
         ? clamp((canvas.value?.getBoundingClientRect().top ?? rect.top) - cardHeight - gap, window.innerHeight - cardHeight)
@@ -276,6 +291,7 @@ function setNetworkGuideStep(step: number) {
     guidePreviousZoom.value = null
   }
   guideStep.value = step
+  if (step === treeGuideStep) activeView.value = 'tree'
   void nextTick(() => {
     if (step === 1) {
       const viewport = canvas.value
@@ -344,6 +360,30 @@ function startNetworkGuide() {
   })
 }
 
+function startPlanActionsGuide() {
+  guideStep.value = planActionsGuideStep
+  activeView.value = 'network'
+  window.addEventListener('resize', scheduleGuidePosition)
+  document.addEventListener('scroll', scheduleGuidePosition, true)
+  void nextTick(() => {
+    document.querySelector<HTMLElement>('[data-guide="plan-history"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    scheduleGuidePosition()
+    guideCard.value?.focus({ preventScroll: true })
+  })
+}
+
+function startTreeGuide() {
+  guideStep.value = treeGuideStep
+  activeView.value = 'tree'
+  window.addEventListener('resize', scheduleGuidePosition)
+  document.addEventListener('scroll', scheduleGuidePosition, true)
+  void nextTick(() => {
+    document.querySelector<HTMLElement>('[data-guide="tree-list"]')?.scrollIntoView({ block: 'nearest' })
+    scheduleGuidePosition()
+    guideCard.value?.focus({ preventScroll: true })
+  })
+}
+
 function finishNetworkGuide() {
   if (guideStep.value === 0 && guidePreviousFilters.value) {
     search.value = guidePreviousFilters.value.search
@@ -355,6 +395,7 @@ function finishNetworkGuide() {
   guidePreviousFilters.value = null
   guideCardStyle.value = {}
   localStorage.setItem(networkGuideStorageKey, 'done')
+  localStorage.setItem(plannerGuideStorageKey, 'done')
   window.removeEventListener('resize', scheduleGuidePosition)
   document.removeEventListener('scroll', scheduleGuidePosition, true)
 }
@@ -1540,7 +1581,7 @@ function linkPath(link: GraphConnection) {
   <main class="app-shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="Capital Rift Factory Planner home"><span class="brand-mark">CR</span><span>CAPITAL RIFT <small>FACTORY PLANNER</small></span></a>
-      <div class="top-actions"><span class="save-state"><i /> Saved in this browser</span><button class="button subtle" :disabled="!undoHistory.length" title="Undo (Ctrl+Z)" @click="undoPlan">Undo</button><button class="button subtle" :disabled="!redoHistory.length" title="Redo (Ctrl+Shift+Z)" @click="redoPlan">Redo</button><button class="button subtle" :disabled="!nodes.length && !productionTargets.length && !importedInputs.length" @click="exportPlan">Export</button><button class="button subtle" @click="importPlanInput?.click()">Import</button><input ref="importPlanInput" type="file" accept="application/json,.json" hidden @change="importPlanFile"><button class="button subtle" :disabled="!nodes.length && !productionTargets.length && !importedInputs.length" @click="clearPlan">Clear plan</button></div>
+      <div class="top-actions"><span class="save-state"><i /> Saved in this browser</span><div class="plan-action-pair" :class="{ 'guide-focus': guideStep === 8 }" data-guide="plan-history"><button class="button subtle" :disabled="!undoHistory.length" title="Undo (Ctrl+Z)" @click="undoPlan">Undo</button><button class="button subtle" :disabled="!redoHistory.length" title="Redo (Ctrl+Shift+Z)" @click="redoPlan">Redo</button></div><div class="plan-action-pair" :class="{ 'guide-focus': guideStep === 9 }" data-guide="plan-files"><button class="button subtle" :disabled="!nodes.length && !productionTargets.length && !importedInputs.length" @click="exportPlan">Export</button><button class="button subtle" @click="importPlanInput?.click()">Import</button><input ref="importPlanInput" type="file" accept="application/json,.json" hidden @change="importPlanFile"></div><button class="button subtle" :class="{ 'guide-focus': guideStep === 10 }" data-guide="plan-clear" :disabled="!nodes.length && !productionTargets.length && !importedInputs.length" @click="clearPlan">Clear plan</button></div>
     </header>
 
     <nav class="view-tabs" aria-label="Planner views">
@@ -1573,7 +1614,7 @@ function linkPath(link: GraphConnection) {
 
       <section class="main-area" :class="{ 'history-main': activeView === 'prices' && showPriceHistory }">
         <div class="plan-toolbar">
-          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'network'" class="guide-replay" :disabled="pending || !aquariumRecipe" @click="startNetworkGuide">? Guide</button><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
+          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'network'" class="guide-replay" :disabled="pending || !aquariumRecipe" @click="startNetworkGuide">? Guide</button><button v-else-if="activeView === 'tree'" class="guide-replay" @click="startTreeGuide">? Guide</button><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
           <div v-if="activeView === 'network'" class="toolbar-actions" :class="{ 'guide-focus': guideStep === 3 }" data-guide="graph-controls"><label class="density-control"><input v-model.number="compactGraph" type="range" min="0" max="1" step="1" aria-label="Graph detail" :aria-valuetext="compactGraph ? 'Compact' : 'Detailed'"><span :class="{ active: !compactGraph }" aria-hidden="true">Detailed</span><span :class="{ active: compactGraph }" aria-hidden="true">Compact</span></label><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="center-button" type="button" title="Center the graph" aria-label="Center the graph" @click="centerCanvas()"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2v3m0 10v3M2 10h3m10 0h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="1" fill="currentColor"/></svg><span>Center view</span></button></div>
           <span v-else-if="activeView === 'prices'" class="view-count">{{ marketData ? `${marketData.catalogueCoverage?.priced ?? marketData.quotes.length} / ${marketData.catalogueCoverage?.total ?? metadata?.itemCount ?? '?'} ITEMS PRICED` : 'LIVE MARKET' }}</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
         </div>
@@ -1707,12 +1748,12 @@ function linkPath(link: GraphConnection) {
           <label v-else-if="activeView === 'items' || activeView === 'buildings'" class="view-search"><span>⌕</span><input v-model="viewSearch" type="search" :placeholder="activeView === 'items' ? 'Search planned items' : 'Search buildings or products'"></label>
           <div v-if="activeView === 'tree'" class="tree-panel">
             <div class="table-intro"><div><p class="eyebrow">RECIPE DEPENDENCIES</p><h2>Production tree</h2></div><span>{{ nodes.length }} machines · {{ network.external.length }} raw inputs</span></div>
-            <div v-if="treeRows.length" class="tree-list">
+            <div v-if="treeRows.length" class="tree-list" :class="{ 'guide-focus': guideStep === treeGuideStep }" data-guide="tree-list">
               <div v-for="row in treeRows" :key="row.key" class="tree-row" :class="[`tree-${row.kind}`, { 'is-external': row.external }]" :style="{ paddingLeft: `${14 + row.depth * 19}px` }">
                 <ItemIcon :item-id="row.itemId" :name="row.name" /><strong>{{ row.name }}</strong><span class="tree-detail">{{ row.detail }}</span><button v-if="row.kind === 'product' && row.nodeId && row.hasChildren" class="tree-expand" :aria-expanded="!row.collapsed" :title="row.collapsed ? `Show ${row.name} ingredients` : `Hide ${row.name} ingredients`" @click.stop="toggleTreeNode(row.nodeId)">{{ row.collapsed ? 'Show chain' : 'Hide chain' }}</button><button v-if="row.kind === 'product' && row.nodeId" class="tree-focus" :title="`Focus ${row.name} in the graph`" @click.stop="focusNode(row.nodeId)">Graph</button><button v-if="row.kind === 'product' && row.nodeId && canExpandNodeId(row.nodeId)" class="tree-expand" :title="`Create producer machines for ${row.name} inputs`" @click.stop="expandTreeNode(row.nodeId)">Expand chain</button><span v-if="row.machines" class="tree-count">{{ row.machines }} machine{{ row.machines === 1 ? '' : 's' }}</span>
               </div>
             </div>
-            <div v-else class="view-empty"><h2>No production tree yet</h2><p>Add a recipe and expand its ingredient chain to see how materials connect.</p></div>
+            <div v-else class="view-empty" :class="{ 'guide-focus': guideStep === treeGuideStep }" data-guide="tree-list"><h2>No production tree yet</h2><p>Add a recipe and expand its ingredient chain to see how materials connect.</p></div>
           </div>
           <div v-else-if="activeView === 'items'" class="table-panel">
             <div class="table-intro"><div><p class="eyebrow">MATERIAL FLOW</p><h2>Item balances</h2></div><span>All rates per minute</span></div>
@@ -1748,12 +1789,12 @@ function linkPath(link: GraphConnection) {
         <footer v-if="metadata" class="source-foot">{{ metadata.recipeCount }} recipes · Snapshot imported {{ new Date(metadata.retrievedAt).toLocaleDateString() }}<strong v-if="catalogueAgeDays >= 30" class="stale-source">Catalogue may be out of date</strong><a href="https://github.com/mrawsky/capitalrift-tools" target="_blank" rel="noreferrer">Data source ↗</a></footer>
       </aside>
     </div>
-    <template v-if="guideStep >= 0 && activeView === 'network'">
+    <template v-if="guideStep >= 0 && (activeView === 'network' || activeView === 'tree')">
       <div class="guide-backdrop" aria-hidden="true" />
       <section ref="guideCard" class="guide-card" :style="guideCardStyle" role="dialog" aria-labelledby="guide-title" aria-describedby="guide-body" tabindex="-1">
-        <div class="guide-card-top"><span>NETWORK GUIDE · {{ guideStep + 1 }} / {{ guideSteps.length }}</span><button type="button" aria-label="Close guide" @click="finishNetworkGuide">×</button></div>
+        <div class="guide-card-top"><span>{{ guideStep === treeGuideStep ? 'TREE LIST GUIDE · 1 / 1' : `PLANNER GUIDE · ${guideStep + 1} / ${guideSteps.length}` }}</span><button type="button" aria-label="Close guide" @click="finishNetworkGuide">×</button></div>
         <h2 id="guide-title">{{ guideSteps[guideStep]?.title }}</h2>
-        <p id="guide-body">{{ guideSteps[guideStep]?.body }}</p>
+        <p id="guide-body">{{ guideStep === treeGuideStep && !treeRows.length ? 'This view will show your graph as an indented list. Add a recipe in Network Graph to see its product, ingredient needs, and rates per minute here.' : guideSteps[guideStep]?.body }}</p>
         <div class="guide-card-actions"><button class="guide-skip" type="button" @click="finishNetworkGuide">Skip guide</button><span v-if="guideStep === 0" class="guide-waiting">Click Aquarium to continue ↗</span><button v-else class="guide-next" type="button" @click="nextNetworkGuideStep">{{ guideStep === guideSteps.length - 1 ? 'Finish guide' : 'Next →' }}</button></div>
       </section>
     </template>
@@ -1803,4 +1844,5 @@ function linkPath(link: GraphConnection) {
 .building-product{display:inline-flex;align-items:center;gap:4px;margin:2px 8px 2px 0;white-space:nowrap}.building-product .game-item-icon{--icon-size:18px}
 .density-control{position:relative;display:grid;grid-template-columns:1fr 1fr;align-items:center;width:150px;height:29px;gap:0;padding:2px;border:1px solid #3b4c3e;border-radius:7px;background:#161f18;box-shadow:inset 0 1px 3px #0005;font:10px 'DM Sans',sans-serif;cursor:pointer}.density-control input{position:absolute;z-index:1;inset:2px;width:calc(100% - 4px);height:23px;margin:0;appearance:none;background:transparent;cursor:pointer}.density-control input::-webkit-slider-runnable-track{height:23px;background:transparent}.density-control input::-moz-range-track{height:23px;background:transparent}.density-control input::-webkit-slider-thumb{width:72px;height:23px;margin:0;appearance:none;border:1px solid #719a76;border-radius:5px;background:linear-gradient(180deg,#38543d,#2a4030);box-shadow:0 2px 5px #0006}.density-control input::-moz-range-thumb{width:70px;height:21px;border:1px solid #719a76;border-radius:5px;background:linear-gradient(180deg,#38543d,#2a4030);box-shadow:0 2px 5px #0006}.density-control span{position:relative;z-index:2;pointer-events:none;text-align:center;color:#8fa391}.density-control span.active{color:#edf8ee;font-weight:600}.density-control:focus-within{outline:2px solid #a1d5a7;outline-offset:2px}.center-button{height:29px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 9px;border:1px solid #4c6b51;border-radius:6px;background:#233328;color:#d2e8d4;font:10px 'DM Sans',sans-serif;white-space:nowrap;cursor:pointer}.center-button svg{width:15px;height:15px;flex:none;color:#a6d1aa}.center-button:hover{border-color:#8dbe93;background:#2e4734;color:#f0fff1}.center-button:focus-visible{outline:2px solid #a1d5a7;outline-offset:2px}@media(max-width:1100px){.plan-toolbar{height:auto;min-height:43px;flex-wrap:wrap;gap:5px;padding-top:6px;padding-bottom:6px}.toolbar-actions{gap:9px}}@media(max-width:700px){.density-control{width:138px;height:29px;font-size:9px}.density-control input::-webkit-slider-thumb{width:66px}.density-control input::-moz-range-thumb{width:64px}.toolbar-actions{gap:7px}}
 .guide-replay{flex:none;margin-left:5px;padding:4px 7px;border:1px solid #415b45;border-radius:5px;background:#203024;color:#a9d4ad;font:9px 'DM Sans',sans-serif;white-space:nowrap;cursor:pointer}.guide-replay:hover:not(:disabled){border-color:#86b88c;background:#2c4130}.guide-replay:disabled{opacity:.45;cursor:default}.guide-backdrop{position:fixed;inset:0;z-index:40;background:#07100bc9}.guide-focus{position:relative!important;z-index:51!important;box-shadow:0 0 0 3px #b2e6b6,0 0 0 8px #659b7080,0 12px 30px #0008!important;border-radius:6px}.canvas-viewport.guide-focus{border-radius:0}.machine-card.guide-focus-parent{z-index:51}.guide-card{position:fixed;z-index:80;top:25%;left:calc(50% - 160px);width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;padding:17px;border:1px solid #8ec798;border-radius:12px;background:linear-gradient(145deg,#223629,#18251d);box-shadow:0 22px 60px #000b;color:#eaf3eb}.guide-card-top{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#a6d5ac;font:9px 'DM Mono',monospace;letter-spacing:.1em}.guide-card-top button{width:24px;height:24px;border:1px solid #4e6b54;border-radius:5px;background:#263b2c;color:#d8e8da;font-size:18px;line-height:1;cursor:pointer}.guide-card h2{margin:14px 0 8px;font-size:17px;line-height:1.25}.guide-card p{margin:0;color:#c0d2c3;font-size:11px;line-height:1.6}.guide-card-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:19px}.guide-card-actions button{border-radius:5px;padding:8px 10px;font:10px 'DM Sans',sans-serif;cursor:pointer}.guide-skip{border:1px solid #4c604f;background:transparent;color:#a8b9ab}.guide-skip:hover{color:#eef8ef}.guide-next{border:1px solid #91c899;background:#41674a;color:#f1fff2;font-weight:600!important}.guide-next:hover{background:#527b5a}.guide-waiting{color:#b6d8ba;text-align:right;font:9px 'DM Sans',sans-serif}.guide-card button:focus-visible,.guide-replay:focus-visible{outline:2px solid #b2e6b6;outline-offset:2px}@media(max-width:1100px){.inspector.guide-inspector-open{position:fixed;z-index:51;top:105px;right:0;bottom:0;display:flex;width:min(340px,100vw);overflow:auto;box-shadow:-14px 0 40px #000a}.inspector.guide-inspector-open>*:not(.guide-focus){opacity:.35}.inspector.guide-inspector-open .guide-focus{z-index:52!important}}@media(max-width:700px){.guide-card{padding:14px}.guide-card h2{font-size:15px}.guide-card p{font-size:10px}.inspector.guide-inspector-open{top:90px}}
+.plan-action-pair{display:flex;align-items:center;gap:16px;flex:none}@media(max-width:700px){.brand{flex:none}.top-actions{min-width:0;max-width:calc(100vw - 155px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none;gap:12px;padding:8px 6px;scroll-padding-inline:8px}.top-actions::-webkit-scrollbar{display:none}.top-actions>.button,.plan-action-pair .button{flex:none;white-space:nowrap}.plan-action-pair{gap:12px}}
 </style>
