@@ -16,6 +16,7 @@ type PlanSnapshot = { nodes: MachineNode[]; connections: Record<string, string>;
 type TreeRow = { key: string; depth: number; kind: 'product' | 'ingredient'; itemId: string; name: string; detail: string; machines?: number; external?: boolean; nodeId?: string; hasChildren?: boolean; collapsed?: boolean }
 type ItemBalance = { id: string; name: string; produced: number; required: number; connected: number; external: number; surplus: number }
 type BuildingSummary = { id: string; name: string; recipeCount: number; machines: number; products: { id: string; name: string }[] }
+type PlannedBuilding = { id: string; name: string; imageUrl: string | null; machines: number; recipeCount: number; outputs: { id: string; name: string; rate: number; machines: number }[] }
 type MarketQuote = { symbol: string; name: string; price: number; buyPrice?: number | null; sellPrice?: number | null; suggestedSellOffer?: number | null; orderBookAsOf?: string | null; units24h: number; volumeKnown?: boolean; dayChangePercent?: number | null; previousPrice: number | null; history: number[]; changeSincePreviousPercent: number | null }
 type MarketData = { asOf: string; refreshedAt: string | null; refreshOutcome: string; refreshIntervalHours: number; catalogueCoverage?: { priced: number; total: number }; orderBookCoverage?: { priced: number; total: number }; quotes: MarketQuote[]; source: string }
 type OptimizerInputCost = { itemId: string; name: string; amountPerItem: number; unitCost: number; totalCost: number; routeRecipe?: Recipe }
@@ -93,6 +94,7 @@ const priceOverridesStorageKey = 'capitalrift-price-overrides-v1'
 const networkGuideStorageKey = 'capitalrift-network-guide-v1'
 const plannerGuideStorageKey = 'capitalrift-planner-guide-v2'
 const itemsGuideStorageKey = 'capitalrift-items-guide-v3'
+const buildingsGuideStorageKey = 'capitalrift-buildings-guide-v4'
 const guideSteps = [
   { target: 'aquarium-recipe', title: 'Start with an Aquarium', body: 'Click Aquarium in the recipe catalogue to add your first machine to the graph.' },
   { target: 'flow', title: 'Follow the first flow', body: 'Inputs on the left feed the Aquarium in the middle. Its finished output appears on the right. The lines show where materials go.' },
@@ -108,13 +110,15 @@ const guideSteps = [
   { target: 'tree-list', title: 'Read the Tree List', body: 'This is your graph written as a list. Each product has its ingredients indented beneath it; “external supply” means no producer is connected. The numbers are rates per minute. Use Show or Hide chain to shorten the list, or Graph to find a machine.' },
   { target: 'item-balances', title: 'Read the item numbers', body: 'These numbers are items per minute. Produced and Required show what machines make and use. Connected is supplied by another machine; External still needs outside supply; Surplus is left over.' },
   { target: 'set-item-import', title: 'Set an import', body: 'If an item has an External amount, use Set import on that row to add it as an outside input. You can then enter how much is available.' },
-  { target: 'import-settings', title: 'Enter the available amount', body: 'Choose an input item and enter its Available amount per minute. The shortfall compares that amount with what your plan needs.' }
+  { target: 'import-settings', title: 'Enter the available amount', body: 'Choose an input item and enter its Available amount per minute. The shortfall compares that amount with what your plan needs.' },
+  { target: 'planned-buildings', title: 'See the buildings in your plan', body: 'This top section shows the building types your plan uses, how many machines and recipes are active, and what each type produces per minute. The full building catalogue is below. Change machines in Network Graph and these numbers update.' }
 ] as const
 const planActionsGuideStep = 8
 const treeGuideStep = 11
 const itemsBalancesGuideStep = 12
 const setItemImportGuideStep = 13
 const importSettingsGuideStep = 14
+const buildingsGuideStep = 15
 const guideStep = ref(-1)
 const guideStandaloneEnd = ref<number | null>(null)
 const guideCard = ref<HTMLElement | null>(null)
@@ -160,8 +164,9 @@ onMounted(async () => {
     nodes.value = nodes.value.filter(node => catalog.some(recipe => recipe.id === node.recipeId))
     await nextTick()
     centerCanvas('auto')
-    if (!localStorage.getItem(itemsGuideStorageKey) && aquariumRecipe.value) {
-      if (localStorage.getItem(plannerGuideStorageKey)) startItemsGuide()
+    if (!localStorage.getItem(buildingsGuideStorageKey) && aquariumRecipe.value) {
+      if (localStorage.getItem(itemsGuideStorageKey)) startBuildingsGuide()
+      else if (localStorage.getItem(plannerGuideStorageKey)) startItemsGuide()
       else if (localStorage.getItem(networkGuideStorageKey)) startPlanActionsGuide()
       else startNetworkGuide()
     }
@@ -243,7 +248,7 @@ watch([nodes, connections, productionTargets, importedInputs, autoArrangeGenerat
 watch(activeView, view => {
   if (view === 'network') void nextTick(centerCanvas)
   if (view === 'prices') void loadMarketPrices()
-  if (guideStep.value >= 0 && view !== (guideStep.value === treeGuideStep ? 'tree' : guideStep.value === importSettingsGuideStep ? 'targets' : guideStep.value >= itemsBalancesGuideStep ? 'items' : 'network')) finishNetworkGuide()
+  if (guideStep.value >= 0 && view !== (guideStep.value === treeGuideStep ? 'tree' : guideStep.value === importSettingsGuideStep ? 'targets' : guideStep.value === buildingsGuideStep ? 'buildings' : guideStep.value >= itemsBalancesGuideStep ? 'items' : 'network')) finishNetworkGuide()
 })
 watch(compactGraph, () => {
   portOffsets.clear()
@@ -269,7 +274,7 @@ function scheduleGuidePosition() {
       top = window.innerWidth <= 700
         ? clamp(rect.top - cardHeight - gap, window.innerHeight - cardHeight)
         : clamp(rect.top + 20, window.innerHeight - cardHeight)
-    } else if (guideStep.value === itemsBalancesGuideStep || guideStep.value === importSettingsGuideStep) {
+    } else if (guideStep.value === itemsBalancesGuideStep || guideStep.value === importSettingsGuideStep || guideStep.value === buildingsGuideStep) {
       left = clamp(rect.right - cardWidth - 20, window.innerWidth - cardWidth)
       top = window.innerWidth <= 700
         ? clamp(rect.top - cardHeight - gap, window.innerHeight - cardHeight)
@@ -310,7 +315,7 @@ function setNetworkGuideStep(step: number) {
   else if (step === importSettingsGuideStep) {
     activeTargetSection.value = 'inputs'
     activeView.value = 'targets'
-  }
+  } else if (step === buildingsGuideStep) activeView.value = 'buildings'
   void nextTick(() => {
     if (step === 1) {
       const viewport = canvas.value
@@ -406,14 +411,27 @@ function startTreeGuide() {
   })
 }
 
-function startItemsGuide() {
-  guideStandaloneEnd.value = null
+function startItemsGuide(standalone = false) {
+  guideStandaloneEnd.value = standalone ? importSettingsGuideStep : null
   guideStep.value = itemsBalancesGuideStep
   activeView.value = 'items'
   window.addEventListener('resize', scheduleGuidePosition)
   document.addEventListener('scroll', scheduleGuidePosition, true)
   void nextTick(() => {
     document.querySelector<HTMLElement>('[data-guide="item-balances"]')?.scrollIntoView({ block: 'nearest' })
+    scheduleGuidePosition()
+    guideCard.value?.focus({ preventScroll: true })
+  })
+}
+
+function startBuildingsGuide() {
+  guideStandaloneEnd.value = buildingsGuideStep
+  guideStep.value = buildingsGuideStep
+  activeView.value = 'buildings'
+  window.addEventListener('resize', scheduleGuidePosition)
+  document.addEventListener('scroll', scheduleGuidePosition, true)
+  void nextTick(() => {
+    document.querySelector<HTMLElement>('[data-guide="planned-buildings"]')?.scrollIntoView({ block: 'nearest' })
     scheduleGuidePosition()
     guideCard.value?.focus({ preventScroll: true })
   })
@@ -433,6 +451,7 @@ function finishNetworkGuide() {
   localStorage.setItem(networkGuideStorageKey, 'done')
   localStorage.setItem(plannerGuideStorageKey, 'done')
   localStorage.setItem(itemsGuideStorageKey, 'done')
+  localStorage.setItem(buildingsGuideStorageKey, 'done')
   window.removeEventListener('resize', scheduleGuidePosition)
   document.removeEventListener('scroll', scheduleGuidePosition, true)
 }
@@ -1487,6 +1506,30 @@ const buildingSummaries = computed<BuildingSummary[]>(() => {
   const needle = viewSearch.value.trim().toLowerCase()
   return [...summaries.values()].filter(building => !needle || `${building.name} ${building.products.map(product => product.name).join(' ')}`.toLowerCase().includes(needle)).sort((a, b) => a.name.localeCompare(b.name))
 })
+const plannedBuildings = computed<PlannedBuilding[]>(() => {
+  const grouped = new Map<string, { building: PlannedBuilding; recipeIds: Set<string> }>()
+  for (const node of nodes.value) {
+    const recipe = recipeFor(node)
+    if (!recipe) continue
+    let entry = grouped.get(recipe.station)
+    if (!entry) {
+      entry = { building: { id: recipe.station, name: recipe.station.replaceAll('_', ' '), imageUrl: recipe.image_url ?? null, machines: 0, recipeCount: 0, outputs: [] }, recipeIds: new Set() }
+      grouped.set(recipe.station, entry)
+    }
+    entry.building.machines += node.machines
+    entry.recipeIds.add(recipe.id)
+    const output = entry.building.outputs.find(item => item.id === recipe.product_id)
+    if (output) {
+      output.rate += recipe.rate * node.machines
+      output.machines += node.machines
+    } else entry.building.outputs.push({ id: recipe.product_id, name: recipe.product, rate: recipe.rate * node.machines, machines: node.machines })
+  }
+  return [...grouped.values()].map(({ building, recipeIds }) => ({ ...building, recipeCount: recipeIds.size, outputs: building.outputs.sort((a, b) => a.name.localeCompare(b.name)) })).sort((a, b) => a.name.localeCompare(b.name))
+})
+const filteredPlannedBuildings = computed(() => {
+  const needle = viewSearch.value.trim().toLowerCase()
+  return plannedBuildings.value.filter(building => !needle || `${building.name} ${building.outputs.map(output => output.name).join(' ')}`.toLowerCase().includes(needle))
+})
 const filteredMarketQuotes = computed(() => {
   const needle = viewSearch.value.trim().toLowerCase()
   return (marketData.value?.quotes ?? []).filter(quote => !needle || `${quote.name} ${quote.symbol}`.toLowerCase().includes(needle))
@@ -1660,7 +1703,7 @@ function linkPath(link: GraphConnection) {
 
       <section class="main-area" :class="{ 'history-main': activeView === 'prices' && showPriceHistory }">
         <div class="plan-toolbar">
-          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'network'" class="guide-replay" :disabled="pending || !aquariumRecipe" @click="startNetworkGuide">? Guide</button><button v-else-if="activeView === 'tree'" class="guide-replay" @click="startTreeGuide">? Guide</button><button v-else-if="activeView === 'items'" class="guide-replay" @click="startItemsGuide">? Guide</button><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
+          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'network'" class="guide-replay" :disabled="pending || !aquariumRecipe" @click="startNetworkGuide">? Guide</button><button v-else-if="activeView === 'tree'" class="guide-replay" @click="startTreeGuide">? Guide</button><button v-else-if="activeView === 'items'" class="guide-replay" @click="startItemsGuide(true)">? Guide</button><button v-else-if="activeView === 'buildings'" class="guide-replay" @click="startBuildingsGuide">? Guide</button><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
           <div v-if="activeView === 'network'" class="toolbar-actions" :class="{ 'guide-focus': guideStep === 3 }" data-guide="graph-controls"><label class="density-control"><input v-model.number="compactGraph" type="range" min="0" max="1" step="1" aria-label="Graph detail" :aria-valuetext="compactGraph ? 'Compact' : 'Detailed'"><span :class="{ active: !compactGraph }" aria-hidden="true">Detailed</span><span :class="{ active: compactGraph }" aria-hidden="true">Compact</span></label><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="center-button" type="button" title="Center the graph" aria-label="Center the graph" @click="centerCanvas()"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2v3m0 10v3M2 10h3m10 0h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="1" fill="currentColor"/></svg><span>Center view</span></button></div>
           <span v-else-if="activeView === 'prices'" class="view-count">{{ marketData ? `${marketData.catalogueCoverage?.priced ?? marketData.quotes.length} / ${marketData.catalogueCoverage?.total ?? metadata?.itemCount ?? '?'} ITEMS PRICED` : 'LIVE MARKET' }}</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
         </div>
@@ -1809,7 +1852,17 @@ function linkPath(link: GraphConnection) {
             </tbody></table></div>
           </div>
           <div v-else-if="activeView === 'buildings'" class="table-panel">
-            <div class="table-intro"><div><p class="eyebrow">PRODUCTION SITES</p><h2>Building catalogue</h2></div><span>{{ network.machineTotal }} machines in plan</span></div>
+            <section class="planned-buildings-section" :class="{ 'guide-focus': guideStep === buildingsGuideStep }" data-guide="planned-buildings" aria-labelledby="planned-buildings-title">
+              <div class="table-intro"><div><p class="eyebrow">YOUR FACTORY</p><h2 id="planned-buildings-title">Buildings in this plan</h2></div><span>{{ plannedBuildings.length }} type{{ plannedBuildings.length === 1 ? '' : 's' }} · {{ network.machineTotal }} machines</span></div>
+              <div v-if="filteredPlannedBuildings.length" class="planned-building-grid">
+                <article v-for="building in filteredPlannedBuildings" :key="building.id" class="planned-building-card">
+                  <div class="planned-building-head"><img v-if="building.imageUrl" class="planned-building-image" :src="building.imageUrl" alt=""><div class="planned-building-title"><h3>{{ building.name }}</h3><span>{{ building.recipeCount }} recipe{{ building.recipeCount === 1 ? '' : 's' }} in use</span></div><strong>{{ building.machines }} machine{{ building.machines === 1 ? '' : 's' }}</strong></div>
+                  <div class="planned-building-outputs"><span class="eyebrow">OUTPUT PER MINUTE</span><div v-for="output in building.outputs" :key="output.id" class="planned-building-output"><span><ItemIcon :item-id="output.id" :name="output.name" />{{ output.name }}</span><strong>{{ amount(output.rate) }} / min</strong><small>{{ output.machines }} machine{{ output.machines === 1 ? '' : 's' }}</small></div></div>
+                </article>
+              </div>
+              <div v-else class="planned-buildings-empty">{{ plannedBuildings.length ? 'No planned buildings match this search.' : 'No buildings in this plan yet. Add a recipe in Network Graph to see the buildings it uses.' }}</div>
+            </section>
+            <div class="table-intro building-catalogue-intro"><div><p class="eyebrow">ALL BUILDINGS</p><h2>Building catalogue</h2></div><span>{{ buildingSummaries.length }} types shown</span></div>
             <div class="table-scroll"><table class="planner-table"><thead><tr><th>Building</th><th>Recipes</th><th>In plan</th><th>Products made here</th></tr></thead><tbody>
               <tr v-for="building in buildingSummaries" :key="building.id"><th scope="row" class="building-name"><img v-if="recipes.find(recipe => recipe.station === building.id)?.image_url" class="building-thumbnail" :src="recipes.find(recipe => recipe.station === building.id)?.image_url ?? undefined" alt="">{{ building.name }}</th><td>{{ building.recipeCount }}</td><td><span class="machine-pill">{{ building.machines }} machine{{ building.machines === 1 ? '' : 's' }}</span></td><td class="products-cell"><span v-for="product in building.products" :key="product.id" class="building-product"><ItemIcon :item-id="product.id" :name="product.name" />{{ product.name }}</span></td></tr>
               <tr v-if="!buildingSummaries.length"><td colspan="4" class="table-empty">No buildings match this search.</td></tr>
@@ -1835,12 +1888,12 @@ function linkPath(link: GraphConnection) {
         <footer v-if="metadata" class="source-foot">{{ metadata.recipeCount }} recipes · Snapshot imported {{ new Date(metadata.retrievedAt).toLocaleDateString() }}<strong v-if="catalogueAgeDays >= 30" class="stale-source">Catalogue may be out of date</strong><a href="https://github.com/mrawsky/capitalrift-tools" target="_blank" rel="noreferrer">Data source ↗</a></footer>
       </aside>
     </div>
-    <template v-if="guideStep >= 0 && (activeView === 'network' || activeView === 'tree' || activeView === 'items' || activeView === 'targets')">
+    <template v-if="guideStep >= 0 && (activeView === 'network' || activeView === 'tree' || activeView === 'items' || activeView === 'targets' || activeView === 'buildings')">
       <div class="guide-backdrop" aria-hidden="true" />
       <section ref="guideCard" class="guide-card" :style="guideCardStyle" role="dialog" aria-labelledby="guide-title" aria-describedby="guide-body" tabindex="-1">
-        <div class="guide-card-top"><span>{{ guideStep === treeGuideStep ? 'TREE LIST GUIDE · 1 / 1' : guideStep >= itemsBalancesGuideStep ? `ITEMS GUIDE · ${guideStep - itemsBalancesGuideStep + 1} / 3` : `PLANNER GUIDE · ${guideStep + 1} / ${guideSteps.length}` }}</span><button type="button" aria-label="Close guide" @click="finishNetworkGuide">×</button></div>
+        <div class="guide-card-top"><span>{{ guideStep === treeGuideStep ? 'TREE LIST GUIDE · 1 / 1' : guideStep === buildingsGuideStep ? 'BUILDINGS GUIDE · 1 / 1' : guideStep >= itemsBalancesGuideStep ? `ITEMS GUIDE · ${guideStep - itemsBalancesGuideStep + 1} / 3` : `PLANNER GUIDE · ${guideStep + 1} / ${guideSteps.length}` }}</span><button type="button" aria-label="Close guide" @click="finishNetworkGuide">×</button></div>
         <h2 id="guide-title">{{ guideSteps[guideStep]?.title }}</h2>
-        <p id="guide-body">{{ guideStep === treeGuideStep && !treeRows.length ? 'This view will show your graph as an indented list. Add a recipe in Network Graph to see its product, ingredient needs, and rates per minute here.' : guideStep === itemsBalancesGuideStep && !itemBalances.length ? 'This table will show how many of each item your machines produce, use, connect, need from outside, and leave over per minute. Add a recipe in Network Graph to see the numbers.' : guideStep === setItemImportGuideStep && !itemBalances.some(item => item.external > 0) ? 'When an item needs outside supply, Set import appears on its row. There is no External amount to set in this plan yet. Next shows where inputs are managed.' : guideStep === importSettingsGuideStep && !importedInputs.length ? 'Use Add input item to choose outside supply, then enter its Available amount per minute. The shortfall shows anything still missing.' : guideSteps[guideStep]?.body }}</p>
+        <p id="guide-body">{{ guideStep === treeGuideStep && !treeRows.length ? 'This view will show your graph as an indented list. Add a recipe in Network Graph to see its product, ingredient needs, and rates per minute here.' : guideStep === itemsBalancesGuideStep && !itemBalances.length ? 'This table will show how many of each item your machines produce, use, connect, need from outside, and leave over per minute. Add a recipe in Network Graph to see the numbers.' : guideStep === setItemImportGuideStep && !itemBalances.some(item => item.external > 0) ? 'When an item needs outside supply, Set import appears on its row. There is no External amount to set in this plan yet. Next shows where inputs are managed.' : guideStep === importSettingsGuideStep && !importedInputs.length ? 'Use Add input item to choose outside supply, then enter its Available amount per minute. The shortfall shows anything still missing.' : guideStep === buildingsGuideStep && !plannedBuildings.length ? 'Once you add recipes in Network Graph, this section shows their building types, machine counts, active recipes, and output rates. The full building catalogue is below.' : guideSteps[guideStep]?.body }}</p>
         <div class="guide-card-actions"><button class="guide-skip" type="button" @click="finishNetworkGuide">Skip guide</button><span v-if="guideStep === 0" class="guide-waiting">Click Aquarium to continue ↗</span><button v-else class="guide-next" type="button" @click="nextNetworkGuideStep">{{ guideStep === guideSteps.length - 1 || guideStep === guideStandaloneEnd ? 'Finish guide' : 'Next →' }}</button></div>
       </section>
     </template>
@@ -1891,4 +1944,5 @@ function linkPath(link: GraphConnection) {
 .density-control{position:relative;display:grid;grid-template-columns:1fr 1fr;align-items:center;width:150px;height:29px;gap:0;padding:2px;border:1px solid #3b4c3e;border-radius:7px;background:#161f18;box-shadow:inset 0 1px 3px #0005;font:10px 'DM Sans',sans-serif;cursor:pointer}.density-control input{position:absolute;z-index:1;inset:2px;width:calc(100% - 4px);height:23px;margin:0;appearance:none;background:transparent;cursor:pointer}.density-control input::-webkit-slider-runnable-track{height:23px;background:transparent}.density-control input::-moz-range-track{height:23px;background:transparent}.density-control input::-webkit-slider-thumb{width:72px;height:23px;margin:0;appearance:none;border:1px solid #719a76;border-radius:5px;background:linear-gradient(180deg,#38543d,#2a4030);box-shadow:0 2px 5px #0006}.density-control input::-moz-range-thumb{width:70px;height:21px;border:1px solid #719a76;border-radius:5px;background:linear-gradient(180deg,#38543d,#2a4030);box-shadow:0 2px 5px #0006}.density-control span{position:relative;z-index:2;pointer-events:none;text-align:center;color:#8fa391}.density-control span.active{color:#edf8ee;font-weight:600}.density-control:focus-within{outline:2px solid #a1d5a7;outline-offset:2px}.center-button{height:29px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 9px;border:1px solid #4c6b51;border-radius:6px;background:#233328;color:#d2e8d4;font:10px 'DM Sans',sans-serif;white-space:nowrap;cursor:pointer}.center-button svg{width:15px;height:15px;flex:none;color:#a6d1aa}.center-button:hover{border-color:#8dbe93;background:#2e4734;color:#f0fff1}.center-button:focus-visible{outline:2px solid #a1d5a7;outline-offset:2px}@media(max-width:1100px){.plan-toolbar{height:auto;min-height:43px;flex-wrap:wrap;gap:5px;padding-top:6px;padding-bottom:6px}.toolbar-actions{gap:9px}}@media(max-width:700px){.density-control{width:138px;height:29px;font-size:9px}.density-control input::-webkit-slider-thumb{width:66px}.density-control input::-moz-range-thumb{width:64px}.toolbar-actions{gap:7px}}
 .guide-replay{flex:none;margin-left:5px;padding:4px 7px;border:1px solid #415b45;border-radius:5px;background:#203024;color:#a9d4ad;font:9px 'DM Sans',sans-serif;white-space:nowrap;cursor:pointer}.guide-replay:hover:not(:disabled){border-color:#86b88c;background:#2c4130}.guide-replay:disabled{opacity:.45;cursor:default}.guide-backdrop{position:fixed;inset:0;z-index:40;background:#07100bc9}.guide-focus{position:relative!important;z-index:51!important;box-shadow:0 0 0 3px #b2e6b6,0 0 0 8px #659b7080,0 12px 30px #0008!important;border-radius:6px}.canvas-viewport.guide-focus{border-radius:0}.machine-card.guide-focus-parent{z-index:51}.guide-card{position:fixed;z-index:80;top:25%;left:calc(50% - 160px);width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;padding:17px;border:1px solid #8ec798;border-radius:12px;background:linear-gradient(145deg,#223629,#18251d);box-shadow:0 22px 60px #000b;color:#eaf3eb}.guide-card-top{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#a6d5ac;font:9px 'DM Mono',monospace;letter-spacing:.1em}.guide-card-top button{width:24px;height:24px;border:1px solid #4e6b54;border-radius:5px;background:#263b2c;color:#d8e8da;font-size:18px;line-height:1;cursor:pointer}.guide-card h2{margin:14px 0 8px;font-size:17px;line-height:1.25}.guide-card p{margin:0;color:#c0d2c3;font-size:11px;line-height:1.6}.guide-card-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:19px}.guide-card-actions button{border-radius:5px;padding:8px 10px;font:10px 'DM Sans',sans-serif;cursor:pointer}.guide-skip{border:1px solid #4c604f;background:transparent;color:#a8b9ab}.guide-skip:hover{color:#eef8ef}.guide-next{border:1px solid #91c899;background:#41674a;color:#f1fff2;font-weight:600!important}.guide-next:hover{background:#527b5a}.guide-waiting{color:#b6d8ba;text-align:right;font:9px 'DM Sans',sans-serif}.guide-card button:focus-visible,.guide-replay:focus-visible{outline:2px solid #b2e6b6;outline-offset:2px}@media(max-width:1100px){.inspector.guide-inspector-open{position:fixed;z-index:51;top:105px;right:0;bottom:0;display:flex;width:min(340px,100vw);overflow:auto;box-shadow:-14px 0 40px #000a}.inspector.guide-inspector-open>*:not(.guide-focus){opacity:.35}.inspector.guide-inspector-open .guide-focus{z-index:52!important}}@media(max-width:700px){.guide-card{padding:14px}.guide-card h2{font-size:15px}.guide-card p{font-size:10px}.inspector.guide-inspector-open{top:90px}}
 .plan-action-pair{display:flex;align-items:center;gap:16px;flex:none}@media(max-width:700px){.brand{flex:none}.top-actions{min-width:0;max-width:calc(100vw - 155px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none;gap:12px;padding:8px 6px;scroll-padding-inline:8px}.top-actions::-webkit-scrollbar{display:none}.top-actions>.button,.plan-action-pair .button{flex:none;white-space:nowrap}.plan-action-pair{gap:12px}}
+.planned-buildings-section{margin-bottom:30px}.planned-building-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px}.planned-building-card{min-width:0;padding:14px;border:1px solid #344238;border-radius:8px;background:linear-gradient(150deg,#1c281f,#172019)}.planned-building-head{display:flex;align-items:center;gap:10px}.planned-building-image{width:36px;height:36px;flex:none;object-fit:contain;border:1px solid #405044;border-radius:6px;background:#263329;padding:4px}.planned-building-title{min-width:0;flex:1}.planned-building-title h3{margin:0 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e2ece3;font-size:13px;font-weight:600;text-transform:capitalize}.planned-building-title>span{color:#8ea191;font:9px 'DM Mono',monospace}.planned-building-head>strong{flex:none;padding:5px 7px;border:1px solid #4c6a50;border-radius:5px;background:#263b2a;color:#c2e2c4;font:9px 'DM Mono',monospace}.planned-building-outputs{margin-top:13px;padding-top:12px;border-top:1px solid #334036}.planned-building-output{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 8px;margin-top:9px;color:#d0ded2;font-size:10px}.planned-building-output>span{min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.planned-building-output .game-item-icon{--icon-size:18px}.planned-building-output>strong{color:#bde0c0;font:10px 'DM Mono',monospace;white-space:nowrap}.planned-building-output>small{grid-column:1 / -1;margin-left:24px;color:#819385;font:9px 'DM Mono',monospace}.planned-buildings-empty{padding:20px;border:1px dashed #3b5040;border-radius:7px;background:#19221b;color:#9bab9d;font-size:11px;line-height:1.5}.building-catalogue-intro{padding-top:20px;border-top:1px solid #2d392f}@media(max-width:700px){.planned-building-grid{grid-template-columns:1fr}.planned-buildings-section{margin-bottom:24px}.planned-building-head>strong{font-size:8px}}
 </style>
