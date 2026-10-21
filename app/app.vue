@@ -90,6 +90,24 @@ const error = ref('')
 const zoom = ref(100)
 const storageKey = 'capitalrift-factory-plan-v1'
 const priceOverridesStorageKey = 'capitalrift-price-overrides-v1'
+const networkGuideStorageKey = 'capitalrift-network-guide-v1'
+const guideSteps = [
+  { target: 'aquarium-recipe', title: 'Start with an Aquarium', body: 'Click Aquarium in the recipe catalogue to add your first machine to the graph.' },
+  { target: 'flow', title: 'Follow the first flow', body: 'Inputs on the left feed the Aquarium in the middle. Its finished output appears on the right. The lines show where materials go.' },
+  { target: 'expand-chain', title: 'Build the ingredient chain', body: 'Expand ingredient chain adds machines that make the Aquarium’s ingredients. Click it to build them now, or choose Next to keep this first flow simple.' },
+  { target: 'graph-controls', title: 'Adjust the graph', body: 'Detailed and Compact change the machine cards. Use − and + to zoom, then Center view to bring the whole flow back into view.' },
+  { target: 'network-stats', title: 'Read your network stats', body: 'The right panel counts your machines and the material connections between them.' },
+  { target: 'network-profit', title: 'See profit per minute', body: 'This is the estimated value of surplus output minus external input costs per minute. An estimate can use a reference price when a market side is missing.' },
+  { target: 'network-inputs', title: 'Check external inputs', body: 'These are materials your network still needs from outside. Adding and connecting producer machines can reduce this list.' },
+  { target: 'network-surplus', title: 'Check surplus output', body: 'Surplus is production that is not used by another machine. You can leave it as a final output or connect it into another recipe.' }
+] as const
+const guideStep = ref(-1)
+const guideCard = ref<HTMLElement | null>(null)
+const guideCardStyle = ref<Record<string, string>>({})
+const guidePreviousFilters = ref<{ search: string; category: string } | null>(null)
+const guidePreviousZoom = ref<number | null>(null)
+const aquariumRecipe = computed(() => recipes.value.find(recipe => recipe.product_id === 'aquarium' || recipe.product.toLowerCase() === 'aquarium'))
+let guidePositionFrame = 0
 const GRID = 24
 const TREE_GAP = 24
 const CANVAS_GROW = 2400
@@ -126,7 +144,8 @@ onMounted(async () => {
     consolidateOutputNodes()
     nodes.value = nodes.value.filter(node => catalog.some(recipe => recipe.id === node.recipeId))
     await nextTick()
-    centerCanvas()
+    centerCanvas('auto')
+    if (!localStorage.getItem(networkGuideStorageKey) && aquariumRecipe.value) startNetworkGuide()
     // Load quotes with the planner so known prices are visible across every view,
     // not only after opening the Prices tab.
     void loadMarketPrices()
@@ -139,6 +158,9 @@ onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
   if (moveFrame) cancelAnimationFrame(moveFrame)
   if (portMeasureFrame) cancelAnimationFrame(portMeasureFrame)
+  if (guidePositionFrame) cancelAnimationFrame(guidePositionFrame)
+  window.removeEventListener('resize', scheduleGuidePosition)
+  document.removeEventListener('scroll', scheduleGuidePosition, true)
 })
 onUpdated(() => {
   if (portMeasureFrame) return
@@ -148,6 +170,10 @@ onUpdated(() => {
   })
 })
 function searchShortcut(event: KeyboardEvent) {
+  if (event.key === 'Escape' && guideStep.value >= 0) {
+    finishNetworkGuide()
+    return
+  }
   const target = event.target as HTMLElement | null
   const editingText = !!target?.closest('input,textarea,select,[contenteditable="true"]')
   if ((event.ctrlKey || event.metaKey) && !editingText && event.key.toLowerCase() === 'z') {
@@ -198,11 +224,152 @@ watch([nodes, connections, productionTargets, importedInputs, autoArrangeGenerat
 watch(activeView, view => {
   if (view === 'network') void nextTick(centerCanvas)
   if (view === 'prices') void loadMarketPrices()
+  if (view !== 'network' && guideStep.value >= 0) finishNetworkGuide()
 })
 watch(compactGraph, () => {
   portOffsets.clear()
   portPositions.value = {}
 })
+
+function scheduleGuidePosition() {
+  if (guideStep.value < 0 || guidePositionFrame) return
+  guidePositionFrame = requestAnimationFrame(() => {
+    guidePositionFrame = 0
+    const target = document.querySelector<HTMLElement>(`[data-guide="${guideSteps[guideStep.value]?.target}"]`)
+    const card = guideCard.value
+    if (!target || !card) return
+    const rect = target.getBoundingClientRect()
+    const cardWidth = card.offsetWidth
+    const cardHeight = card.offsetHeight
+    const gap = 16
+    const clamp = (value: number, max: number) => Math.max(12, Math.min(value, max - 12))
+    let left: number
+    let top: number
+    if (guideStep.value === 1 || (guideStep.value === 2 && window.innerWidth <= 700)) {
+      left = clamp(rect.left + (rect.width - cardWidth) / 2, window.innerWidth - cardWidth)
+      top = window.innerWidth <= 700
+        ? clamp((canvas.value?.getBoundingClientRect().top ?? rect.top) - cardHeight - gap, window.innerHeight - cardHeight)
+        : clamp(rect.bottom - cardHeight - 20, window.innerHeight - cardHeight)
+    } else if (window.innerWidth - rect.right >= cardWidth + gap + 12) {
+      left = rect.right + gap
+      top = clamp(rect.top, window.innerHeight - cardHeight)
+    } else if (rect.left >= cardWidth + gap + 12) {
+      left = rect.left - cardWidth - gap
+      top = clamp(rect.top, window.innerHeight - cardHeight)
+    } else {
+      left = clamp(rect.left + (rect.width - cardWidth) / 2, window.innerWidth - cardWidth)
+      top = rect.bottom + gap + cardHeight + 12 <= window.innerHeight
+        ? rect.bottom + gap
+        : clamp(rect.top - cardHeight - gap, window.innerHeight - cardHeight)
+    }
+    guideCardStyle.value = { left: `${left}px`, top: `${top}px` }
+  })
+}
+
+function setNetworkGuideStep(step: number) {
+  if (guideStep.value === 0 && step > 0 && guidePreviousFilters.value) {
+    search.value = guidePreviousFilters.value.search
+    selectedCategory.value = guidePreviousFilters.value.category
+  }
+  if (guideStep.value === 1 && step !== 1 && guidePreviousZoom.value !== null) {
+    zoom.value = guidePreviousZoom.value
+    guidePreviousZoom.value = null
+  }
+  guideStep.value = step
+  void nextTick(() => {
+    if (step === 1) {
+      const viewport = canvas.value
+      if (viewport) {
+        guidePreviousZoom.value = zoom.value
+        const graphItems = [
+          ...nodes.value.map(node => ({ x: node.x, y: node.y, width: 300, height: machineCardHeight(recipeFor(node)!) })),
+          ...(graphPanels.value.input ? [{ x: graphPanels.value.input.x, y: graphPanels.value.input.y, width: 250, height: 42 + graphPanels.value.input.rows.length * 29 }] : []),
+          ...(graphPanels.value.output ? [{ x: graphPanels.value.output.x, y: graphPanels.value.output.y, width: 250, height: 42 + graphPanels.value.output.rows.length * 29 }] : [])
+        ]
+        const graphWidth = Math.max(...graphItems.map(item => item.x + item.width)) - Math.min(...graphItems.map(item => item.x))
+        zoom.value = Math.max(30, Math.min(100, Math.floor((viewport.clientWidth - 36) / graphWidth * 20) * 5))
+      }
+      void nextTick(centerGuideFlow)
+    }
+    const target = document.querySelector<HTMLElement>(`[data-guide="${guideSteps[step]?.target}"]`)
+    if (step === 2 && target && canvas.value) {
+      const viewRect = canvas.value.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      canvas.value.scrollBy({
+        left: targetRect.left + targetRect.width / 2 - (viewRect.left + viewRect.width / 2),
+        top: targetRect.top + targetRect.height / 2 - (viewRect.top + viewRect.height / 2),
+        behavior: 'auto'
+      })
+    } else if (step !== 1) target?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    scheduleGuidePosition()
+    if (step === 2) target?.focus({ preventScroll: true })
+    else guideCard.value?.focus({ preventScroll: true })
+  })
+}
+
+function centerGuideFlow() {
+  const viewport = canvas.value
+  const elements = [
+    document.querySelector<HTMLElement>('.input-panel'),
+    document.querySelector<HTMLElement>('[data-guide="aquarium-node"]'),
+    document.querySelector<HTMLElement>('.output-panel')
+  ].filter((element): element is HTMLElement => !!element)
+  if (!viewport || !elements.length) return
+  const viewRect = viewport.getBoundingClientRect()
+  const rects = elements.map(element => element.getBoundingClientRect())
+  viewport.scrollBy({
+    left: (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2 - (viewRect.left + viewRect.width / 2),
+    top: (Math.min(...rects.map(rect => rect.top)) + Math.max(...rects.map(rect => rect.bottom))) / 2 - (viewRect.top + viewRect.height / 2),
+    behavior: 'auto'
+  })
+}
+
+function startNetworkGuide() {
+  if (!aquariumRecipe.value) return
+  if (guideStep.value < 0) guidePreviousFilters.value = { search: search.value, category: selectedCategory.value }
+  activeView.value = 'network'
+  compactGraph.value = 0
+  if (guidePreviousZoom.value !== null) zoom.value = guidePreviousZoom.value
+  guidePreviousZoom.value = null
+  search.value = 'aquarium'
+  selectedCategory.value = 'all'
+  guideStep.value = 0
+  window.addEventListener('resize', scheduleGuidePosition)
+  document.addEventListener('scroll', scheduleGuidePosition, true)
+  void nextTick(() => {
+    const target = document.querySelector<HTMLElement>('[data-guide="aquarium-recipe"]')
+    target?.scrollIntoView({ block: 'nearest' })
+    scheduleGuidePosition()
+    target?.focus({ preventScroll: true })
+  })
+}
+
+function finishNetworkGuide() {
+  if (guideStep.value === 0 && guidePreviousFilters.value) {
+    search.value = guidePreviousFilters.value.search
+    selectedCategory.value = guidePreviousFilters.value.category
+  }
+  guideStep.value = -1
+  if (guidePreviousZoom.value !== null) zoom.value = guidePreviousZoom.value
+  guidePreviousZoom.value = null
+  guidePreviousFilters.value = null
+  guideCardStyle.value = {}
+  localStorage.setItem(networkGuideStorageKey, 'done')
+  window.removeEventListener('resize', scheduleGuidePosition)
+  document.removeEventListener('scroll', scheduleGuidePosition, true)
+}
+
+function nextNetworkGuideStep() {
+  if (guideStep.value < 0) return
+  if (guideStep.value === guideSteps.length - 1) return finishNetworkGuide()
+  let nextStep = guideStep.value + 1
+  if (nextStep === 2 && !nodes.value.some(node => recipeFor(node)?.product_id === 'aquarium' && canExpandChain(node))) nextStep = 3
+  setNetworkGuideStep(nextStep)
+}
+
+function previousNetworkGuideStep() {
+  if (guideStep.value > 1) setNetworkGuideStep(guideStep.value - 1)
+}
 
 function snapshotPlan(): PlanSnapshot {
   return JSON.parse(JSON.stringify({
@@ -479,7 +646,8 @@ function addRecipe(recipe: Recipe, position?: { x: number; y: number }) {
   const existing = nodesByProduct.value.get(recipe.product_id)?.[0]
   if (existing) {
     selectedNodeIds.value = [existing.id]
-    void nextTick(centerCanvas)
+    if (guideStep.value === 0 && recipe.product_id === 'aquarium') void nextTick(nextNetworkGuideStep)
+    else void nextTick(centerCanvas)
     return
   }
   recordPlanChange()
@@ -494,7 +662,8 @@ function addRecipe(recipe: Recipe, position?: { x: number; y: number }) {
   nodes.value.push(node)
   selectedNodeIds.value = [node.id]
   arrangeNetwork()
-  void nextTick(centerCanvas)
+  if (guideStep.value === 0 && recipe.product_id === 'aquarium') void nextTick(nextNetworkGuideStep)
+  else void nextTick(centerCanvas)
 }
 function startCatalogDrag(event: DragEvent, recipe: Recipe) {
   draggedRecipe.value = recipe
@@ -851,6 +1020,7 @@ function expandChain(root: MachineNode, relayout = true, recipeChooser?: (itemId
     arrangeNetwork()
     void nextTick(centerCanvas)
   }
+  if (guideStep.value === 2 && recipeFor(root)?.product_id === 'aquarium') void nextTick(nextNetworkGuideStep)
 }
 function setConnection(key: string, providerId: string) {
   if (connections.value[key] !== (providerId || undefined)) recordPlanChange()
@@ -1327,11 +1497,11 @@ function arrangeNetwork() {
   }
 }
 
-function centerCanvas() {
+function centerCanvas(behavior: ScrollBehavior = 'smooth') {
   if (!canvas.value || !canvas.value.clientWidth || !canvas.value.clientHeight) return
   const scale = zoom.value / 100
   if (!nodes.value.length) {
-    canvas.value.scrollTo({ left: Math.max(0, -boardBounds.value.left * scale - canvas.value.clientWidth / 2), top: Math.max(0, -boardBounds.value.top * scale - canvas.value.clientHeight / 2), behavior: 'smooth' })
+    canvas.value.scrollTo({ left: Math.max(0, -boardBounds.value.left * scale - canvas.value.clientWidth / 2), top: Math.max(0, -boardBounds.value.top * scale - canvas.value.clientHeight / 2), behavior })
     return
   }
   const allGraphNodes = [
@@ -1343,7 +1513,7 @@ function centerCanvas() {
   const minY = Math.min(...allGraphNodes.map(node => node.y))
   const maxX = Math.max(...allGraphNodes.map(node => node.x + node.width))
   const maxY = Math.max(...allGraphNodes.map(node => node.y + node.height))
-  canvas.value.scrollTo({ left: Math.max(0, ((minX + maxX) / 2 - boardBounds.value.left) * scale - canvas.value.clientWidth / 2), top: Math.max(0, ((minY + maxY) / 2 - boardBounds.value.top) * scale - canvas.value.clientHeight / 2), behavior: 'smooth' })
+  canvas.value.scrollTo({ left: Math.max(0, ((minX + maxX) / 2 - boardBounds.value.left) * scale - canvas.value.clientWidth / 2), top: Math.max(0, ((minY + maxY) / 2 - boardBounds.value.top) * scale - canvas.value.clientHeight / 2), behavior })
 }
 function portPosition(key: string, fallback: PortPoint) { return portPositions.value[key] ?? fallback }
 function linkStart(link: GraphConnection) {
@@ -1389,7 +1559,7 @@ function linkPath(link: GraphConnection) {
         <div class="catalog-list">
           <div v-for="group in groupedRecipes" :key="group.id" class="recipe-group">
             <div class="recipe-group-heading" :style="{ '--station-accent': stationAccent(group.id) }"><span>{{ group.name }}</span><span>{{ group.recipes.length }}</span></div>
-            <button v-for="recipe in group.recipes" :key="recipe.id" class="catalog-item" draggable="true" @click="addRecipe(recipe)" @dragstart="startCatalogDrag($event, recipe)" @dragend="finishCatalogDrag">
+            <button v-for="recipe in group.recipes" :key="recipe.id" class="catalog-item" :class="{ 'guide-focus': guideStep === 0 && recipe.id === aquariumRecipe?.id }" :data-guide="recipe.id === aquariumRecipe?.id ? 'aquarium-recipe' : undefined" draggable="true" @click="addRecipe(recipe)" @dragstart="startCatalogDrag($event, recipe)" @dragend="finishCatalogDrag">
               <ItemIcon class="item-icon" :item-id="recipe.product_id" :name="recipe.product" />
               <span class="catalog-copy"><strong>{{ recipe.product }}</strong><small>{{ recipe.label }}</small></span>
               <span class="add-icon">+</span>
@@ -1403,11 +1573,11 @@ function linkPath(link: GraphConnection) {
 
       <section class="main-area" :class="{ 'history-main': activeView === 'prices' && showPriceHistory }">
         <div class="plan-toolbar">
-          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
-          <div v-if="activeView === 'network'" class="toolbar-actions"><label class="density-control"><input v-model.number="compactGraph" type="range" min="0" max="1" step="1" aria-label="Graph detail" :aria-valuetext="compactGraph ? 'Compact' : 'Detailed'"><span :class="{ active: !compactGraph }" aria-hidden="true">Detailed</span><span :class="{ active: compactGraph }" aria-hidden="true">Compact</span></label><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="center-button" type="button" title="Center the graph" aria-label="Center the graph" @click="centerCanvas"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2v3m0 10v3M2 10h3m10 0h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="1" fill="currentColor"/></svg><span>Center view</span></button></div>
+          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'network'" class="guide-replay" :disabled="pending || !aquariumRecipe" @click="startNetworkGuide">? Guide</button><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
+          <div v-if="activeView === 'network'" class="toolbar-actions" :class="{ 'guide-focus': guideStep === 3 }" data-guide="graph-controls"><label class="density-control"><input v-model.number="compactGraph" type="range" min="0" max="1" step="1" aria-label="Graph detail" :aria-valuetext="compactGraph ? 'Compact' : 'Detailed'"><span :class="{ active: !compactGraph }" aria-hidden="true">Detailed</span><span :class="{ active: compactGraph }" aria-hidden="true">Compact</span></label><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="center-button" type="button" title="Center the graph" aria-label="Center the graph" @click="centerCanvas()"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2v3m0 10v3M2 10h3m10 0h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="1" fill="currentColor"/></svg><span>Center view</span></button></div>
           <span v-else-if="activeView === 'prices'" class="view-count">{{ marketData ? `${marketData.catalogueCoverage?.priced ?? marketData.quotes.length} / ${marketData.catalogueCoverage?.total ?? metadata?.itemCount ?? '?'} ITEMS PRICED` : 'LIVE MARKET' }}</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
         </div>
-        <div v-show="activeView === 'network'" ref="canvas" class="canvas-viewport" :class="{ 'is-panning': panning }" @wheel="zoomCanvasWheel" @pointerdown="startSelectOrPan" @pointermove="selectOrPanMove" @pointerup="finishSelectOrPan" @pointercancel="finishSelectOrPan" @dragenter.prevent="updateDragPreview" @dragover.prevent="updateDragPreview" @drop.prevent="dropCatalogRecipe" @contextmenu.prevent>
+        <div v-show="activeView === 'network'" ref="canvas" class="canvas-viewport" :class="{ 'is-panning': panning, 'guide-focus': guideStep === 1 }" data-guide="flow" @wheel="zoomCanvasWheel" @pointerdown="startSelectOrPan" @pointermove="selectOrPanMove" @pointerup="finishSelectOrPan" @pointercancel="finishSelectOrPan" @dragenter.prevent="updateDragPreview" @dragover.prevent="updateDragPreview" @drop.prevent="dropCatalogRecipe" @contextmenu.prevent>
         <div ref="canvasBoard" class="canvas-board" :class="{ 'has-nodes': nodes.length }" :style="{ zoom: `${zoom}%`, width: `${boardWidth}px`, height: `${boardHeight}px`, backgroundPosition: `${-boardBounds.left}px ${-boardBounds.top}px` }">
             <svg class="connections" :viewBox="`${boardBounds.left} ${boardBounds.top} ${boardWidth} ${boardHeight}`" preserveAspectRatio="none" aria-label="Material flow connections">
               <g v-for="link in graphConnections" :key="link.key">
@@ -1428,7 +1598,7 @@ function linkPath(link: GraphConnection) {
                 <span class="port flow-panel-port left-port" /><span class="flow-panel-name"><ItemIcon :item-id="item.itemId" :name="item.name" />{{ item.name }}</span><small>{{ amount(item.rate) }} / min</small><strong>{{ itemPrice(item.name, 'sell') }}</strong>
               </div>
             </article>
-            <article v-for="node in nodes" :key="node.id" :ref="element => setNodeElement(node.id, element)" class="machine-card" :class="{ selected: selectedNodeIds.includes(node.id), compact: compactGraph }" :style="{ left: `${node.x - boardBounds.left}px`, top: `${node.y - boardBounds.top}px`, '--station-accent': stationAccent(recipeFor(node)?.station) }" @pointerdown.stop="startNodeMove($event, node)" @pointermove="moveNode" @pointerup="finishNodeMove" @pointercancel="finishNodeMove">
+            <article v-for="node in nodes" :key="node.id" :ref="element => setNodeElement(node.id, element)" class="machine-card" :class="{ selected: selectedNodeIds.includes(node.id), compact: compactGraph, 'guide-focus-parent': guideStep === 2 && recipeFor(node)?.product_id === 'aquarium' }" :data-guide="recipeFor(node)?.product_id === 'aquarium' ? 'aquarium-node' : undefined" :style="{ left: `${node.x - boardBounds.left}px`, top: `${node.y - boardBounds.top}px`, '--station-accent': stationAccent(recipeFor(node)?.station) }" @pointerdown.stop="startNodeMove($event, node)" @pointermove="moveNode" @pointerup="finishNodeMove" @pointercancel="finishNodeMove">
               <header class="machine-head">
                 <span class="grip" aria-hidden="true">⠿</span><img v-if="recipeFor(node)?.image_url" class="machine-thumbnail" :src="recipeFor(node)?.image_url ?? undefined" alt=""><span class="station-tag">{{ recipeFor(node)?.station.replaceAll('_', ' ') }}</span>
                 <button class="delete-node" :aria-label="`Remove ${recipeFor(node)?.product}`" title="Remove machine" @click="removeNode(node.id)">×</button>
@@ -1444,7 +1614,7 @@ function linkPath(link: GraphConnection) {
                 <p class="node-label">PRODUCTION MACHINE</p>
                 <h2><ItemIcon :item-id="recipeFor(node)?.product_id" :name="recipeFor(node)?.product ?? ''" />{{ recipeFor(node)?.product }}</h2>
                 <div class="machine-control"><span>Machines</span><div class="stepper"><button :aria-label="`Remove one ${recipeFor(node)?.product} machine`" @click="setMachineCount(node, node.machines - 1)">−</button><input :aria-label="`${recipeFor(node)?.product} machine count`" type="number" min="1" max="999" :value="node.machines" @change="setMachineCount(node, ($event.target as HTMLInputElement).value)"><button :aria-label="`Add one ${recipeFor(node)?.product} machine`" @click="setMachineCount(node, node.machines + 1)">+</button></div></div>
-                <button v-if="canExpandChain(node)" class="expand-chain" :title="`Create producer machines for ${recipeFor(node)?.product} inputs`" @pointerdown.stop @click="expandChain(node)"><span aria-hidden="true">↳</span> Expand ingredient chain</button>
+                <button v-if="canExpandChain(node)" class="expand-chain" :class="{ 'guide-focus': guideStep === 2 && recipeFor(node)?.product_id === 'aquarium' }" :data-guide="recipeFor(node)?.product_id === 'aquarium' ? 'expand-chain' : undefined" :title="`Create producer machines for ${recipeFor(node)?.product} inputs`" @pointerdown.stop @click="expandChain(node)"><span aria-hidden="true">↳</span> Expand ingredient chain</button>
                 <div class="node-output"><span class="port output-port" :ref="element => setPortElement(`output:${node.id}`, element)" /><span class="port-copy"><small>OUTPUT</small><strong>{{ amount((recipeFor(node)?.rate ?? 0) * node.machines) }} <em>/ min</em></strong></span><span class="output-copy"><strong class="output-name"><ItemIcon :item-id="recipeFor(node)?.product_id" :name="recipeFor(node)?.product ?? ''" />{{ recipeFor(node)?.product }} ({{ itemPrice(recipeFor(node)?.product ?? '', 'sell') }})</strong><small class="node-profit" :class="{ 'profit-positive': (processProfit(recipeFor(node), node.machines) ?? 0) > 0, 'profit-negative': (processProfit(recipeFor(node), node.machines) ?? 0) < 0 }">{{ profitLabel(processProfit(recipeFor(node), node.machines), recipeUsesReference(recipeFor(node))) }}</small></span></div>
                 <div class="input-heading"><span>INPUTS</span><span>/ MIN</span></div>
                 <div v-for="ingredient in recipeFor(node)?.ingredients" :key="ingredient.item_id" class="node-input">
@@ -1562,15 +1732,15 @@ function linkPath(link: GraphConnection) {
         <footer v-if="activeView === 'network'" class="canvas-footer"><span><i class="footer-dot" /> GRID SNAP ON</span><span>{{ network.connectionRows.length }} MATERIAL CONNECTION{{ network.connectionRows.length === 1 ? '' : 'S' }}</span></footer>
       </section>
 
-      <aside class="inspector">
+      <aside class="inspector" :class="{ 'guide-inspector-open': guideStep >= 4 }">
         <div class="inspector-top"><div><p class="eyebrow">PLAN OVERVIEW</p><h2>Network stats</h2></div></div>
-        <div class="stat-grid"><div class="stat-card"><span>MACHINES</span><strong>{{ network.machineTotal }}</strong><small>across {{ nodes.length }} recipes</small></div><div class="stat-card"><span>CONNECTIONS</span><strong>{{ network.connectionRows.length }}</strong><small>material flows</small></div></div>
-        <section class="total-profit-card"><span>TOTAL PROFIT · PER MIN</span><strong :class="{ 'profit-positive': (totalProfitPerMinute ?? 0) > 0, 'profit-negative': (totalProfitPerMinute ?? 0) < 0 }">{{ profitLabel(totalProfitPerMinute, planEconomics.usesEstimate) }}</strong><small>{{ planEconomics.usesEstimate ? 'Estimate uses an opposite-side price or ticker reference where needed' : 'Surplus sales minus external input costs' }}</small></section>
-        <section class="summary-section"><div class="section-heading"><div><span class="section-mark import-mark">↓</span><h3>External inputs</h3></div><span class="section-count">{{ network.external.length }}</span></div>
+        <div class="stat-grid" :class="{ 'guide-focus': guideStep === 4 }" data-guide="network-stats"><div class="stat-card"><span>MACHINES</span><strong>{{ network.machineTotal }}</strong><small>across {{ nodes.length }} recipes</small></div><div class="stat-card"><span>CONNECTIONS</span><strong>{{ network.connectionRows.length }}</strong><small>material flows</small></div></div>
+        <section class="total-profit-card" :class="{ 'guide-focus': guideStep === 5 }" data-guide="network-profit"><span>TOTAL PROFIT · PER MIN</span><strong :class="{ 'profit-positive': (totalProfitPerMinute ?? 0) > 0, 'profit-negative': (totalProfitPerMinute ?? 0) < 0 }">{{ profitLabel(totalProfitPerMinute, planEconomics.usesEstimate) }}</strong><small>{{ planEconomics.usesEstimate ? 'Estimate uses an opposite-side price or ticker reference where needed' : 'Surplus sales minus external input costs' }}</small></section>
+        <section class="summary-section" :class="{ 'guide-focus': guideStep === 6 }" data-guide="network-inputs"><div class="section-heading"><div><span class="section-mark import-mark">↓</span><h3>External inputs</h3></div><span class="section-count">{{ network.external.length }}</span></div>
           <div v-if="network.external.length" class="resource-list"><div v-for="item in network.external" :key="item.id" class="resource-row"><ItemIcon class="resource-icon" :item-id="item.id" :name="item.name" /><span class="resource-name">{{ item.name }}</span><strong>{{ amount(item.amount) }} <small>/ min</small></strong></div></div>
           <p v-else class="summary-empty">Add machines to see required materials.</p>
         </section>
-        <section class="summary-section surplus-section"><div class="section-heading"><div><span class="section-mark surplus-mark">↑</span><h3>Surplus</h3></div><span class="section-count">{{ network.surplus.length }}</span></div>
+        <section class="summary-section surplus-section" :class="{ 'guide-focus': guideStep === 7 }" data-guide="network-surplus"><div class="section-heading"><div><span class="section-mark surplus-mark">↑</span><h3>Surplus</h3></div><span class="section-count">{{ network.surplus.length }}</span></div>
           <div v-if="network.surplus.length" class="resource-list"><div v-for="item in network.surplus" :key="item.id" class="resource-row"><ItemIcon class="resource-icon" :item-id="item.id" :name="item.name" /><span class="resource-name">{{ item.name }}</span><strong>{{ amount(item.amount) }} <small>/ min</small></strong></div></div>
           <p v-else class="summary-empty">All production is connected.</p>
         </section>
@@ -1578,6 +1748,15 @@ function linkPath(link: GraphConnection) {
         <footer v-if="metadata" class="source-foot">{{ metadata.recipeCount }} recipes · Snapshot imported {{ new Date(metadata.retrievedAt).toLocaleDateString() }}<strong v-if="catalogueAgeDays >= 30" class="stale-source">Catalogue may be out of date</strong><a href="https://github.com/mrawsky/capitalrift-tools" target="_blank" rel="noreferrer">Data source ↗</a></footer>
       </aside>
     </div>
+    <template v-if="guideStep >= 0 && activeView === 'network'">
+      <div class="guide-backdrop" aria-hidden="true" />
+      <section ref="guideCard" class="guide-card" :style="guideCardStyle" role="dialog" aria-labelledby="guide-title" aria-describedby="guide-body" tabindex="-1">
+        <div class="guide-card-top"><span>NETWORK GUIDE · {{ guideStep + 1 }} / {{ guideSteps.length }}</span><button type="button" aria-label="Close guide" @click="finishNetworkGuide">×</button></div>
+        <h2 id="guide-title">{{ guideSteps[guideStep]?.title }}</h2>
+        <p id="guide-body">{{ guideSteps[guideStep]?.body }}</p>
+        <div class="guide-card-actions"><button class="guide-skip" type="button" @click="finishNetworkGuide">Skip guide</button><span v-if="guideStep === 0" class="guide-waiting">Click Aquarium to continue ↗</span><button v-else class="guide-next" type="button" @click="nextNetworkGuideStep">{{ guideStep === guideSteps.length - 1 ? 'Finish guide' : 'Next →' }}</button></div>
+      </section>
+    </template>
     <div v-if="error" class="toast" role="alert">{{ error }}</div>
   </main>
 </template>
@@ -1623,4 +1802,5 @@ function linkPath(link: GraphConnection) {
 .economics-row .game-item-icon,.optimizer-input-detail .game-item-icon{--icon-size:20px;margin-right:6px}
 .building-product{display:inline-flex;align-items:center;gap:4px;margin:2px 8px 2px 0;white-space:nowrap}.building-product .game-item-icon{--icon-size:18px}
 .density-control{position:relative;display:grid;grid-template-columns:1fr 1fr;align-items:center;width:150px;height:29px;gap:0;padding:2px;border:1px solid #3b4c3e;border-radius:7px;background:#161f18;box-shadow:inset 0 1px 3px #0005;font:10px 'DM Sans',sans-serif;cursor:pointer}.density-control input{position:absolute;z-index:1;inset:2px;width:calc(100% - 4px);height:23px;margin:0;appearance:none;background:transparent;cursor:pointer}.density-control input::-webkit-slider-runnable-track{height:23px;background:transparent}.density-control input::-moz-range-track{height:23px;background:transparent}.density-control input::-webkit-slider-thumb{width:72px;height:23px;margin:0;appearance:none;border:1px solid #719a76;border-radius:5px;background:linear-gradient(180deg,#38543d,#2a4030);box-shadow:0 2px 5px #0006}.density-control input::-moz-range-thumb{width:70px;height:21px;border:1px solid #719a76;border-radius:5px;background:linear-gradient(180deg,#38543d,#2a4030);box-shadow:0 2px 5px #0006}.density-control span{position:relative;z-index:2;pointer-events:none;text-align:center;color:#8fa391}.density-control span.active{color:#edf8ee;font-weight:600}.density-control:focus-within{outline:2px solid #a1d5a7;outline-offset:2px}.center-button{height:29px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 9px;border:1px solid #4c6b51;border-radius:6px;background:#233328;color:#d2e8d4;font:10px 'DM Sans',sans-serif;white-space:nowrap;cursor:pointer}.center-button svg{width:15px;height:15px;flex:none;color:#a6d1aa}.center-button:hover{border-color:#8dbe93;background:#2e4734;color:#f0fff1}.center-button:focus-visible{outline:2px solid #a1d5a7;outline-offset:2px}@media(max-width:1100px){.plan-toolbar{height:auto;min-height:43px;flex-wrap:wrap;gap:5px;padding-top:6px;padding-bottom:6px}.toolbar-actions{gap:9px}}@media(max-width:700px){.density-control{width:138px;height:29px;font-size:9px}.density-control input::-webkit-slider-thumb{width:66px}.density-control input::-moz-range-thumb{width:64px}.toolbar-actions{gap:7px}}
+.guide-replay{flex:none;margin-left:5px;padding:4px 7px;border:1px solid #415b45;border-radius:5px;background:#203024;color:#a9d4ad;font:9px 'DM Sans',sans-serif;white-space:nowrap;cursor:pointer}.guide-replay:hover:not(:disabled){border-color:#86b88c;background:#2c4130}.guide-replay:disabled{opacity:.45;cursor:default}.guide-backdrop{position:fixed;inset:0;z-index:40;background:#07100bc9}.guide-focus{position:relative!important;z-index:51!important;box-shadow:0 0 0 3px #b2e6b6,0 0 0 8px #659b7080,0 12px 30px #0008!important;border-radius:6px}.canvas-viewport.guide-focus{border-radius:0}.machine-card.guide-focus-parent{z-index:51}.guide-card{position:fixed;z-index:80;top:25%;left:calc(50% - 160px);width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;padding:17px;border:1px solid #8ec798;border-radius:12px;background:linear-gradient(145deg,#223629,#18251d);box-shadow:0 22px 60px #000b;color:#eaf3eb}.guide-card-top{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#a6d5ac;font:9px 'DM Mono',monospace;letter-spacing:.1em}.guide-card-top button{width:24px;height:24px;border:1px solid #4e6b54;border-radius:5px;background:#263b2c;color:#d8e8da;font-size:18px;line-height:1;cursor:pointer}.guide-card h2{margin:14px 0 8px;font-size:17px;line-height:1.25}.guide-card p{margin:0;color:#c0d2c3;font-size:11px;line-height:1.6}.guide-card-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:19px}.guide-card-actions button{border-radius:5px;padding:8px 10px;font:10px 'DM Sans',sans-serif;cursor:pointer}.guide-skip{border:1px solid #4c604f;background:transparent;color:#a8b9ab}.guide-skip:hover{color:#eef8ef}.guide-next{border:1px solid #91c899;background:#41674a;color:#f1fff2;font-weight:600!important}.guide-next:hover{background:#527b5a}.guide-waiting{color:#b6d8ba;text-align:right;font:9px 'DM Sans',sans-serif}.guide-card button:focus-visible,.guide-replay:focus-visible{outline:2px solid #b2e6b6;outline-offset:2px}@media(max-width:1100px){.inspector.guide-inspector-open{position:fixed;z-index:51;top:105px;right:0;bottom:0;display:flex;width:min(340px,100vw);overflow:auto;box-shadow:-14px 0 40px #000a}.inspector.guide-inspector-open>*:not(.guide-focus){opacity:.35}.inspector.guide-inspector-open .guide-focus{z-index:52!important}}@media(max-width:700px){.guide-card{padding:14px}.guide-card h2{font-size:15px}.guide-card p{font-size:10px}.inspector.guide-inspector-open{top:90px}}
 </style>
