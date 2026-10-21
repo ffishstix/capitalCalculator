@@ -92,6 +92,7 @@ const storageKey = 'capitalrift-factory-plan-v1'
 const priceOverridesStorageKey = 'capitalrift-price-overrides-v1'
 const networkGuideStorageKey = 'capitalrift-network-guide-v1'
 const plannerGuideStorageKey = 'capitalrift-planner-guide-v2'
+const itemsGuideStorageKey = 'capitalrift-items-guide-v3'
 const guideSteps = [
   { target: 'aquarium-recipe', title: 'Start with an Aquarium', body: 'Click Aquarium in the recipe catalogue to add your first machine to the graph.' },
   { target: 'flow', title: 'Follow the first flow', body: 'Inputs on the left feed the Aquarium in the middle. Its finished output appears on the right. The lines show where materials go.' },
@@ -104,11 +105,18 @@ const guideSteps = [
   { target: 'plan-history', title: 'Undo and redo changes', body: 'Undo takes back your last plan change. Redo puts it back. These buttons become available as you edit the plan, and their history lasts while this page is open.' },
   { target: 'plan-files', title: 'Save or load a plan file', body: 'Export downloads your current plan as a JSON file. Import loads a saved plan file and replaces the current plan, so export first if you want to keep it.' },
   { target: 'plan-clear', title: 'Start over when you need to', body: 'Clear plan removes the machines and saved targets after you confirm. You can undo that change while this page remains open.' },
-  { target: 'tree-list', title: 'Read the Tree List', body: 'This is your graph written as a list. Each product has its ingredients indented beneath it; “external supply” means no producer is connected. The numbers are rates per minute. Use Show or Hide chain to shorten the list, or Graph to find a machine.' }
+  { target: 'tree-list', title: 'Read the Tree List', body: 'This is your graph written as a list. Each product has its ingredients indented beneath it; “external supply” means no producer is connected. The numbers are rates per minute. Use Show or Hide chain to shorten the list, or Graph to find a machine.' },
+  { target: 'item-balances', title: 'Read the item numbers', body: 'These numbers are items per minute. Produced and Required show what machines make and use. Connected is supplied by another machine; External still needs outside supply; Surplus is left over.' },
+  { target: 'set-item-import', title: 'Set an import', body: 'If an item has an External amount, use Set import on that row to add it as an outside input. You can then enter how much is available.' },
+  { target: 'import-settings', title: 'Enter the available amount', body: 'Choose an input item and enter its Available amount per minute. The shortfall compares that amount with what your plan needs.' }
 ] as const
 const planActionsGuideStep = 8
-const treeGuideStep = guideSteps.length - 1
+const treeGuideStep = 11
+const itemsBalancesGuideStep = 12
+const setItemImportGuideStep = 13
+const importSettingsGuideStep = 14
 const guideStep = ref(-1)
+const guideStandaloneEnd = ref<number | null>(null)
 const guideCard = ref<HTMLElement | null>(null)
 const guideCardStyle = ref<Record<string, string>>({})
 const guidePreviousFilters = ref<{ search: string; category: string } | null>(null)
@@ -152,8 +160,9 @@ onMounted(async () => {
     nodes.value = nodes.value.filter(node => catalog.some(recipe => recipe.id === node.recipeId))
     await nextTick()
     centerCanvas('auto')
-    if (!localStorage.getItem(plannerGuideStorageKey) && aquariumRecipe.value) {
-      if (localStorage.getItem(networkGuideStorageKey)) startPlanActionsGuide()
+    if (!localStorage.getItem(itemsGuideStorageKey) && aquariumRecipe.value) {
+      if (localStorage.getItem(plannerGuideStorageKey)) startItemsGuide()
+      else if (localStorage.getItem(networkGuideStorageKey)) startPlanActionsGuide()
       else startNetworkGuide()
     }
     // Load quotes with the planner so known prices are visible across every view,
@@ -234,7 +243,7 @@ watch([nodes, connections, productionTargets, importedInputs, autoArrangeGenerat
 watch(activeView, view => {
   if (view === 'network') void nextTick(centerCanvas)
   if (view === 'prices') void loadMarketPrices()
-  if (guideStep.value >= 0 && view !== (guideStep.value === treeGuideStep ? 'tree' : 'network')) finishNetworkGuide()
+  if (guideStep.value >= 0 && view !== (guideStep.value === treeGuideStep ? 'tree' : guideStep.value === importSettingsGuideStep ? 'targets' : guideStep.value >= itemsBalancesGuideStep ? 'items' : 'network')) finishNetworkGuide()
 })
 watch(compactGraph, () => {
   portOffsets.clear()
@@ -256,6 +265,11 @@ function scheduleGuidePosition() {
     let left: number
     let top: number
     if (guideStep.value === treeGuideStep) {
+      left = clamp(rect.right - cardWidth - 20, window.innerWidth - cardWidth)
+      top = window.innerWidth <= 700
+        ? clamp(rect.top - cardHeight - gap, window.innerHeight - cardHeight)
+        : clamp(rect.top + 20, window.innerHeight - cardHeight)
+    } else if (guideStep.value === itemsBalancesGuideStep || guideStep.value === importSettingsGuideStep) {
       left = clamp(rect.right - cardWidth - 20, window.innerWidth - cardWidth)
       top = window.innerWidth <= 700
         ? clamp(rect.top - cardHeight - gap, window.innerHeight - cardHeight)
@@ -292,6 +306,11 @@ function setNetworkGuideStep(step: number) {
   }
   guideStep.value = step
   if (step === treeGuideStep) activeView.value = 'tree'
+  else if (step === itemsBalancesGuideStep || step === setItemImportGuideStep) activeView.value = 'items'
+  else if (step === importSettingsGuideStep) {
+    activeTargetSection.value = 'inputs'
+    activeView.value = 'targets'
+  }
   void nextTick(() => {
     if (step === 1) {
       const viewport = canvas.value
@@ -342,6 +361,7 @@ function centerGuideFlow() {
 
 function startNetworkGuide() {
   if (!aquariumRecipe.value) return
+  guideStandaloneEnd.value = null
   if (guideStep.value < 0) guidePreviousFilters.value = { search: search.value, category: selectedCategory.value }
   activeView.value = 'network'
   compactGraph.value = 0
@@ -361,6 +381,7 @@ function startNetworkGuide() {
 }
 
 function startPlanActionsGuide() {
+  guideStandaloneEnd.value = null
   guideStep.value = planActionsGuideStep
   activeView.value = 'network'
   window.addEventListener('resize', scheduleGuidePosition)
@@ -373,6 +394,7 @@ function startPlanActionsGuide() {
 }
 
 function startTreeGuide() {
+  guideStandaloneEnd.value = treeGuideStep
   guideStep.value = treeGuideStep
   activeView.value = 'tree'
   window.addEventListener('resize', scheduleGuidePosition)
@@ -384,25 +406,40 @@ function startTreeGuide() {
   })
 }
 
+function startItemsGuide() {
+  guideStandaloneEnd.value = null
+  guideStep.value = itemsBalancesGuideStep
+  activeView.value = 'items'
+  window.addEventListener('resize', scheduleGuidePosition)
+  document.addEventListener('scroll', scheduleGuidePosition, true)
+  void nextTick(() => {
+    document.querySelector<HTMLElement>('[data-guide="item-balances"]')?.scrollIntoView({ block: 'nearest' })
+    scheduleGuidePosition()
+    guideCard.value?.focus({ preventScroll: true })
+  })
+}
+
 function finishNetworkGuide() {
   if (guideStep.value === 0 && guidePreviousFilters.value) {
     search.value = guidePreviousFilters.value.search
     selectedCategory.value = guidePreviousFilters.value.category
   }
   guideStep.value = -1
+  guideStandaloneEnd.value = null
   if (guidePreviousZoom.value !== null) zoom.value = guidePreviousZoom.value
   guidePreviousZoom.value = null
   guidePreviousFilters.value = null
   guideCardStyle.value = {}
   localStorage.setItem(networkGuideStorageKey, 'done')
   localStorage.setItem(plannerGuideStorageKey, 'done')
+  localStorage.setItem(itemsGuideStorageKey, 'done')
   window.removeEventListener('resize', scheduleGuidePosition)
   document.removeEventListener('scroll', scheduleGuidePosition, true)
 }
 
 function nextNetworkGuideStep() {
   if (guideStep.value < 0) return
-  if (guideStep.value === guideSteps.length - 1) return finishNetworkGuide()
+  if (guideStep.value === guideSteps.length - 1 || guideStep.value === guideStandaloneEnd.value) return finishNetworkGuide()
   let nextStep = guideStep.value + 1
   if (nextStep === 2 && !nodes.value.some(node => recipeFor(node)?.product_id === 'aquarium' && canExpandChain(node))) nextStep = 3
   setNetworkGuideStep(nextStep)
@@ -628,6 +665,10 @@ function addImportedInput() {
   if (item) {
     recordPlanChange()
     importedInputs.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, itemId: item.id, rate: 1 })
+    if (guideStep.value === importSettingsGuideStep) void nextTick(() => {
+      document.querySelector<HTMLElement>('[data-guide="import-settings"]')?.scrollIntoView({ block: 'center' })
+      scheduleGuidePosition()
+    })
   }
 }
 function setImportedItemById(inputId: string, itemId: string) {
@@ -662,7 +703,12 @@ function configureImportForItem(itemId: string) {
     importedInputs.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, itemId, rate: 0 })
   }
   activeTargetSection.value = 'inputs'
+  if (guideStep.value === setItemImportGuideStep) guideStep.value = importSettingsGuideStep
   activeView.value = 'targets'
+  if (guideStep.value === importSettingsGuideStep) void nextTick(() => {
+    document.querySelector<HTMLElement>('[data-guide="import-settings"]')?.scrollIntoView({ block: 'center' })
+    scheduleGuidePosition()
+  })
 }
 function reviewItemBalance(name: string) {
   viewSearch.value = name
@@ -1614,7 +1660,7 @@ function linkPath(link: GraphConnection) {
 
       <section class="main-area" :class="{ 'history-main': activeView === 'prices' && showPriceHistory }">
         <div class="plan-toolbar">
-          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'network'" class="guide-replay" :disabled="pending || !aquariumRecipe" @click="startNetworkGuide">? Guide</button><button v-else-if="activeView === 'tree'" class="guide-replay" @click="startTreeGuide">? Guide</button><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
+          <div class="plan-title"><span class="crumb">FACTORY</span><span class="crumb-sep">/</span><strong>{{ viewTitle }}</strong><button v-if="activeView === 'network'" class="guide-replay" :disabled="pending || !aquariumRecipe" @click="startNetworkGuide">? Guide</button><button v-else-if="activeView === 'tree'" class="guide-replay" @click="startTreeGuide">? Guide</button><button v-else-if="activeView === 'items'" class="guide-replay" @click="startItemsGuide">? Guide</button><button v-if="activeView === 'prices'" class="history-toolbar-button" :class="{ active: showPriceHistory }" :aria-pressed="showPriceHistory" @click="showPriceHistory ? showPriceHistory = false : openPriceHistory()">{{ showPriceHistory ? 'Prices' : 'History' }} <span aria-hidden="true">{{ showPriceHistory ? '↖' : '↗' }}</span></button></div>
           <div v-if="activeView === 'network'" class="toolbar-actions" :class="{ 'guide-focus': guideStep === 3 }" data-guide="graph-controls"><label class="density-control"><input v-model.number="compactGraph" type="range" min="0" max="1" step="1" aria-label="Graph detail" :aria-valuetext="compactGraph ? 'Compact' : 'Detailed'"><span :class="{ active: !compactGraph }" aria-hidden="true">Detailed</span><span :class="{ active: compactGraph }" aria-hidden="true">Compact</span></label><div class="zoom-controls"><button class="icon-button" :disabled="zoom <= 60" title="Zoom out" aria-label="Zoom out" @click="zoom = Math.max(60, zoom - 10)">−</button><span class="zoom-label">{{ zoom }}%</span><button class="icon-button" :disabled="zoom >= 140" title="Zoom in" aria-label="Zoom in" @click="zoom = Math.min(140, zoom + 10)">+</button></div><button class="center-button" type="button" title="Center the graph" aria-label="Center the graph" @click="centerCanvas()"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2v3m0 10v3M2 10h3m10 0h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="1" fill="currentColor"/></svg><span>Center view</span></button></div>
           <span v-else-if="activeView === 'prices'" class="view-count">{{ marketData ? `${marketData.catalogueCoverage?.priced ?? marketData.quotes.length} / ${marketData.catalogueCoverage?.total ?? metadata?.itemCount ?? '?'} ITEMS PRICED` : 'LIVE MARKET' }}</span><span v-else class="view-count">{{ activeView === 'tree' ? treeRows.length : activeView === 'items' ? itemBalances.length : activeView === 'buildings' ? buildingSummaries.length : productionTargets.length }} {{ activeView === 'tree' ? 'STEPS' : activeView === 'items' ? 'ITEMS' : activeView === 'buildings' ? 'BUILDINGS' : 'OUTPUTS' }}</span>
         </div>
@@ -1694,13 +1740,13 @@ function linkPath(link: GraphConnection) {
               <div class="target-actions"><p>Whole machines are rounded up to meet each requested rate. Shared ingredients use one producer sized for all connected outputs.</p><button class="button primary" :disabled="!productionTargets.some(target => target.itemId && target.rate > 0)" @click="buildProductionTargets">Generate production chain</button></div>
             </div>
             <div v-else-if="activeTargetSection === 'inputs'" class="target-section">
-              <div class="target-section-heading"><div><p class="eyebrow">AVAILABLE INPUTS</p><h3>Items supplied from outside</h3></div><button class="target-add-button" :disabled="importedInputs.length >= materialOptions.length" @click="addImportedInput"><span class="target-add-icon">+</span><span>Add input item</span></button></div>
+              <div class="target-section-heading"><div><p class="eyebrow">AVAILABLE INPUTS</p><h3>Items supplied from outside</h3></div><button class="target-add-button" :class="{ 'guide-focus': guideStep === importSettingsGuideStep && !importedInputs.length }" :data-guide="!importedInputs.length ? 'import-settings' : undefined" :disabled="importedInputs.length >= materialOptions.length" @click="addImportedInput"><span class="target-add-icon">+</span><span>Add input item</span></button></div>
               <p class="target-help">Items listed here are treated as direct imports when a chain is generated, so no producer machines are added for them. Existing connected producers remain in your current plan.</p>
               <div v-if="importedInputs.length" class="target-list">
-                <article v-for="input in importedInputBalances" :key="input.id" class="target-card input-target-card">
+                <article v-for="(input, index) in importedInputBalances" :key="input.id" class="target-card input-target-card">
                   <div class="target-card-top"><label class="target-product"><ItemIcon class="item-icon" :item-id="input.itemId" :name="input.name" /><select :value="input.itemId" :aria-label="`Imported input ${input.name}`" @change="setImportedItemById(input.id, ($event.target as HTMLSelectElement).value)"><option v-for="item in materialOptions" :key="item.id" :value="item.id" :disabled="importedInputs.some(existing => existing.id !== input.id && existing.itemId === item.id)">{{ item.name }}</option></select></label><button class="remove-target" :aria-label="`Remove ${input.name} input`" title="Remove input" @click="removeImportedInput(input.id)">×</button></div>
                   <div class="input-target-summary"><span>External requirement <strong>{{ amount(input.required) }} / min</strong></span><span>Available <strong>{{ amount(input.rate) }} / min</strong></span><span :class="{ 'needs-supply': input.shortage > 0 }">Shortfall <strong>{{ amount(input.shortage) }} / min</strong><button v-if="input.shortage > 0" class="tree-expand" @click="reviewItemBalance(input.name)">Review flow</button></span></div>
-                  <div class="target-rate"><label :for="`input-rate-${input.id}`">Available amount</label><div class="target-rate-control"><input :id="`input-rate-${input.id}`" :value="input.rate" type="number" min="0" step="0.1" @change="setImportedRate(input.id, ($event.target as HTMLInputElement).value)"><span>items / min</span></div></div>
+                  <div class="target-rate" :class="{ 'guide-focus': guideStep === importSettingsGuideStep && index === 0 }" :data-guide="index === 0 ? 'import-settings' : undefined"><label :for="`input-rate-${input.id}`">Available amount</label><div class="target-rate-control"><input :id="`input-rate-${input.id}`" :value="input.rate" type="number" min="0" step="0.1" @change="setImportedRate(input.id, ($event.target as HTMLInputElement).value)"><span>items / min</span></div></div>
                 </article>
               </div>
               <div v-else class="target-empty"><span class="empty-symbol">↓</span><strong>No imported inputs set</strong><p>Raw materials will appear here as external requirements after the chain is generated.</p></div>
@@ -1757,8 +1803,8 @@ function linkPath(link: GraphConnection) {
           </div>
           <div v-else-if="activeView === 'items'" class="table-panel">
             <div class="table-intro"><div><p class="eyebrow">MATERIAL FLOW</p><h2>Item balances</h2></div><span>All rates per minute</span></div>
-            <div class="table-scroll"><table class="planner-table"><thead><tr><th>Item</th><th>Produced</th><th>Required</th><th>Connected</th><th>External</th><th>Surplus</th><th></th></tr></thead><tbody>
-              <tr v-for="item in itemBalances" :key="item.id"><th scope="row"><ItemIcon class="table-item-icon" :item-id="item.id" :name="item.name" />{{ item.name }}</th><td>{{ amount(item.produced) }}</td><td>{{ amount(item.required) }}</td><td>{{ amount(item.connected) }}</td><td :class="{ 'needs-supply': item.external > 0 }">{{ amount(item.external) }}</td><td :class="{ 'has-surplus': item.surplus > 0 }">{{ amount(item.surplus) }}</td><td><button v-if="item.external > 0" class="tree-expand" @click="configureImportForItem(item.id)">Set import</button></td></tr>
+            <div class="table-scroll" :class="{ 'guide-focus': guideStep === itemsBalancesGuideStep || (guideStep === setItemImportGuideStep && !itemBalances.some(item => item.external > 0)) }" :data-guide="guideStep === setItemImportGuideStep && !itemBalances.some(item => item.external > 0) ? 'set-item-import' : 'item-balances'"><table class="planner-table"><thead><tr><th>Item</th><th>Produced</th><th>Required</th><th>Connected</th><th>External</th><th>Surplus</th><th></th></tr></thead><tbody>
+              <tr v-for="item in itemBalances" :key="item.id"><th scope="row"><ItemIcon class="table-item-icon" :item-id="item.id" :name="item.name" />{{ item.name }}</th><td>{{ amount(item.produced) }}</td><td>{{ amount(item.required) }}</td><td>{{ amount(item.connected) }}</td><td :class="{ 'needs-supply': item.external > 0 }">{{ amount(item.external) }}</td><td :class="{ 'has-surplus': item.surplus > 0 }">{{ amount(item.surplus) }}</td><td><button v-if="item.external > 0" class="tree-expand" :class="{ 'guide-focus': guideStep === setItemImportGuideStep && itemBalances.find(balance => balance.external > 0)?.id === item.id }" :data-guide="itemBalances.find(balance => balance.external > 0)?.id === item.id ? 'set-item-import' : undefined" @click="configureImportForItem(item.id)">Set import</button></td></tr>
               <tr v-if="!itemBalances.length"><td colspan="7" class="table-empty">Add machines to see item balances.</td></tr>
             </tbody></table></div>
           </div>
@@ -1773,7 +1819,7 @@ function linkPath(link: GraphConnection) {
         <footer v-if="activeView === 'network'" class="canvas-footer"><span><i class="footer-dot" /> GRID SNAP ON</span><span>{{ network.connectionRows.length }} MATERIAL CONNECTION{{ network.connectionRows.length === 1 ? '' : 'S' }}</span></footer>
       </section>
 
-      <aside class="inspector" :class="{ 'guide-inspector-open': guideStep >= 4 }">
+      <aside class="inspector" :class="{ 'guide-inspector-open': guideStep >= 4 && guideStep <= 7 }">
         <div class="inspector-top"><div><p class="eyebrow">PLAN OVERVIEW</p><h2>Network stats</h2></div></div>
         <div class="stat-grid" :class="{ 'guide-focus': guideStep === 4 }" data-guide="network-stats"><div class="stat-card"><span>MACHINES</span><strong>{{ network.machineTotal }}</strong><small>across {{ nodes.length }} recipes</small></div><div class="stat-card"><span>CONNECTIONS</span><strong>{{ network.connectionRows.length }}</strong><small>material flows</small></div></div>
         <section class="total-profit-card" :class="{ 'guide-focus': guideStep === 5 }" data-guide="network-profit"><span>TOTAL PROFIT · PER MIN</span><strong :class="{ 'profit-positive': (totalProfitPerMinute ?? 0) > 0, 'profit-negative': (totalProfitPerMinute ?? 0) < 0 }">{{ profitLabel(totalProfitPerMinute, planEconomics.usesEstimate) }}</strong><small>{{ planEconomics.usesEstimate ? 'Estimate uses an opposite-side price or ticker reference where needed' : 'Surplus sales minus external input costs' }}</small></section>
@@ -1789,13 +1835,13 @@ function linkPath(link: GraphConnection) {
         <footer v-if="metadata" class="source-foot">{{ metadata.recipeCount }} recipes · Snapshot imported {{ new Date(metadata.retrievedAt).toLocaleDateString() }}<strong v-if="catalogueAgeDays >= 30" class="stale-source">Catalogue may be out of date</strong><a href="https://github.com/mrawsky/capitalrift-tools" target="_blank" rel="noreferrer">Data source ↗</a></footer>
       </aside>
     </div>
-    <template v-if="guideStep >= 0 && (activeView === 'network' || activeView === 'tree')">
+    <template v-if="guideStep >= 0 && (activeView === 'network' || activeView === 'tree' || activeView === 'items' || activeView === 'targets')">
       <div class="guide-backdrop" aria-hidden="true" />
       <section ref="guideCard" class="guide-card" :style="guideCardStyle" role="dialog" aria-labelledby="guide-title" aria-describedby="guide-body" tabindex="-1">
-        <div class="guide-card-top"><span>{{ guideStep === treeGuideStep ? 'TREE LIST GUIDE · 1 / 1' : `PLANNER GUIDE · ${guideStep + 1} / ${guideSteps.length}` }}</span><button type="button" aria-label="Close guide" @click="finishNetworkGuide">×</button></div>
+        <div class="guide-card-top"><span>{{ guideStep === treeGuideStep ? 'TREE LIST GUIDE · 1 / 1' : guideStep >= itemsBalancesGuideStep ? `ITEMS GUIDE · ${guideStep - itemsBalancesGuideStep + 1} / 3` : `PLANNER GUIDE · ${guideStep + 1} / ${guideSteps.length}` }}</span><button type="button" aria-label="Close guide" @click="finishNetworkGuide">×</button></div>
         <h2 id="guide-title">{{ guideSteps[guideStep]?.title }}</h2>
-        <p id="guide-body">{{ guideStep === treeGuideStep && !treeRows.length ? 'This view will show your graph as an indented list. Add a recipe in Network Graph to see its product, ingredient needs, and rates per minute here.' : guideSteps[guideStep]?.body }}</p>
-        <div class="guide-card-actions"><button class="guide-skip" type="button" @click="finishNetworkGuide">Skip guide</button><span v-if="guideStep === 0" class="guide-waiting">Click Aquarium to continue ↗</span><button v-else class="guide-next" type="button" @click="nextNetworkGuideStep">{{ guideStep === guideSteps.length - 1 ? 'Finish guide' : 'Next →' }}</button></div>
+        <p id="guide-body">{{ guideStep === treeGuideStep && !treeRows.length ? 'This view will show your graph as an indented list. Add a recipe in Network Graph to see its product, ingredient needs, and rates per minute here.' : guideStep === itemsBalancesGuideStep && !itemBalances.length ? 'This table will show how many of each item your machines produce, use, connect, need from outside, and leave over per minute. Add a recipe in Network Graph to see the numbers.' : guideStep === setItemImportGuideStep && !itemBalances.some(item => item.external > 0) ? 'When an item needs outside supply, Set import appears on its row. There is no External amount to set in this plan yet. Next shows where inputs are managed.' : guideStep === importSettingsGuideStep && !importedInputs.length ? 'Use Add input item to choose outside supply, then enter its Available amount per minute. The shortfall shows anything still missing.' : guideSteps[guideStep]?.body }}</p>
+        <div class="guide-card-actions"><button class="guide-skip" type="button" @click="finishNetworkGuide">Skip guide</button><span v-if="guideStep === 0" class="guide-waiting">Click Aquarium to continue ↗</span><button v-else class="guide-next" type="button" @click="nextNetworkGuideStep">{{ guideStep === guideSteps.length - 1 || guideStep === guideStandaloneEnd ? 'Finish guide' : 'Next →' }}</button></div>
       </section>
     </template>
     <div v-if="error" class="toast" role="alert">{{ error }}</div>
