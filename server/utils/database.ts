@@ -48,7 +48,10 @@ const localClient: DatabaseClient = {
 }
 
 export function getDatabase(event: H3Event): DatabaseClient {
-  if (process.env.CAPITALRIFT_DB_PATH) return localClient
   const cloudflare = event.context.cloudflare as { env?: { DB?: DatabaseClient } } | undefined
-  return cloudflare?.env?.DB ?? localClient
+  if (cloudflare) {
+    if (!cloudflare.env?.DB) throw createError({ statusCode: 503, statusMessage: 'Database unavailable.' })
+    return cloudflare.env.DB
+  }
+  return localClient
 }
