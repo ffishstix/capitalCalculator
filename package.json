@@ -17,7 +17,7 @@
     "better-sqlite3": "^12.4.1",
     "nuxt": "^4.4.8",
     "playwright": "^1.64.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.5",
     "vue": "^3.5.42"
   },
   "devDependencies": {
