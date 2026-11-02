@@ -14,8 +14,8 @@ const GAME_ORIGIN = 'https://play.capitalrift.com'
 const TICKER_PATH = '/api/market/ticker'
 const PLANNER_SYNC_URL = new URL('/api/refresh', process.env.PLANNER_SYNC_URL || 'https://fishstix.uk').href
 const REQUEST_DELAY_MS = Number.isFinite(Number(process.env.CAPITALRIFT_REQUEST_DELAY_MS))
-  ? Math.max(0, Number(process.env.CAPITALRIFT_REQUEST_DELAY_MS))
-  : 1_000
+  ? Math.max(25, Number(process.env.CAPITALRIFT_REQUEST_DELAY_MS))
+  : 25
 const LOGIN_WAIT_MS = 10 * 60 * 1_000
 const LOGIN_POLL_MS = 10_000
 const DEBUGGING_PORT = Number(process.env.CAPITALRIFT_CHROME_DEBUG_PORT || 9228)
@@ -221,7 +221,7 @@ function machineSources(bundle) {
   return result
 }
 
-async function collectImages(bundle, bundleUrl) {
+async function collectImages(bundle, bundleUrl, page) {
   const itemMap = itemSources(bundle, bundleUrl)
   const machineMap = machineSources(bundle)
   if (!existsSync(IMAGE_DB)) {
@@ -244,21 +244,37 @@ async function collectImages(bundle, bundleUrl) {
     let downloaded = 0
     const collect = async (id, source, cached, kind) => {
       if (cached?.sourceUrl === source.sourceUrl) {
-        validateImage(id, cached.data, cached.contentType, kind === 'item' ? 48_000 : 2_000_000)
-        if (sha256(cached.data) === cached.sha256) return cached
+        try {
+          validateImage(id, cached.data, cached.contentType, kind === 'item' ? 48_000 : 2_000_000)
+          if (sha256(cached.data) === cached.sha256) return cached
+        } catch { /* Rebuild an outdated or oversized cached image. */ }
       }
       let bytes
       if (source.value.startsWith('data:')) bytes = Buffer.from(source.value.slice(source.value.indexOf(',') + 1), 'base64')
       else {
-        const response = await fetch(new URL(source.value, GAME_ORIGIN))
-        if (!response.ok) throw new Error(`${id}: image returned HTTP ${response.status}`)
-        if (response.headers.get('content-type')?.split(';')[0] !== source.contentType) throw new Error(`${id}: unexpected image content type`)
-        bytes = Buffer.from(await response.arrayBuffer())
+        const result = await page.evaluate(async path => {
+          const response = await fetch(path, { credentials: 'same-origin' })
+          if (!response.ok) return { status: response.status }
+          const data = new Uint8Array(await response.arrayBuffer())
+          const chunks = []
+          for (let offset = 0; offset < data.length; offset += 32768) {
+            chunks.push(String.fromCharCode(...data.subarray(offset, offset + 32768)))
+          }
+          return { status: response.status, data: btoa(chunks.join('')) }
+        }, source.value)
+        if (result.status !== 200 || !result.data) throw new Error(`${id}: image returned HTTP ${result.status}`)
+        bytes = Buffer.from(result.data, 'base64')
         downloaded += 1
       }
       validateImage(id, bytes, source.contentType, 2_000_000)
-      const contentType = kind === 'item' && source.contentType === 'image/png' ? 'image/webp' : source.contentType
-      if (contentType !== source.contentType) bytes = await sharp(bytes).resize(128, 128, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toBuffer()
+      const contentType = kind === 'item' ? 'image/webp' : source.contentType
+      if (kind === 'item' && (source.contentType !== contentType || bytes.length > 48_000)) {
+        const originalBytes = bytes
+        for (const quality of [85, 70, 55, 40]) {
+          bytes = await sharp(originalBytes).resize(128, 128, { fit: 'inside', withoutEnlargement: true }).webp({ quality }).toBuffer()
+          if (bytes.length <= 48_000) break
+        }
+      }
       validateImage(id, bytes, contentType, kind === 'item' ? 48_000 : 2_000_000)
       const row = { id, contentType, data: bytes, sha256: sha256(bytes), sourceUrl: source.sourceUrl }
       ;(kind === 'item' ? itemSave : machineSave).run(id, contentType, bytes, row.sha256, row.sourceUrl, fetchedAt)
@@ -330,11 +346,22 @@ async function refresh() {
 
     if (!orderBooks.length) throw new Error('No order books were returned; ticker references were left unchanged.')
 
-    const { url: bundleUrl, text: bundle } = await currentBundle(page)
-    const { itemImages, machineImages } = previous?.bundleUrl === bundleUrl
-      ? { itemImages: [], machineImages: [] }
-      : await collectImages(bundle, bundleUrl)
-    if (previous?.bundleUrl === bundleUrl) console.log('Game artwork is unchanged; no image files need uploading.')
+    let bundleUrl = previous?.bundleUrl ?? null
+    let itemImages = []
+    let machineImages = []
+    let artworkUnchanged = false
+    try {
+      const current = await currentBundle(page)
+      if (previous?.bundleUrl !== current.url) {
+        const collected = await collectImages(current.text, current.url, page)
+        itemImages = collected.itemImages
+        machineImages = collected.machineImages
+      } else artworkUnchanged = true
+      bundleUrl = current.url
+    } catch (error) {
+      console.warn(`Artwork refresh skipped; it will be retried next run: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (artworkUnchanged) console.log('Game artwork is unchanged; no image files need uploading.')
     const syncUrl = new URL(PLANNER_SYNC_URL)
     if (syncUrl.protocol !== 'https:' && syncUrl.hostname !== 'localhost' && syncUrl.hostname !== '127.0.0.1') throw new Error('The refresh destination must use HTTPS.')
     if (syncUrl.protocol === 'https:' && !process.env.PRICE_SYNC_TOKEN) throw new Error('PRICE_SYNC_TOKEN is missing from .env.')
