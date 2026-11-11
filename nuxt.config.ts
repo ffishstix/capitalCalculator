@@ -3,5 +3,5 @@ export default defineNuxtConfig({
   nitro: { preset: 'cloudflare_pages' },
   devtools: { enabled: true },
   css: ['~/assets/css/history.css'],
-  app: { head: { htmlAttrs: { lang: 'en' }, title: 'CapitalRift Factory Planner', meta: [{ name: 'description', content: 'Plan Capital Rift production on a connected factory grid.' }] } }
+  app: { head: { htmlAttrs: { lang: 'en' }, title: 'CapitalRift Factory Planner', meta: [{ name: 'description', content: 'Plan Capital Rift production on a connected factory grid.' }], link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }] } }
 })

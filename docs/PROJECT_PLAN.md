@@ -2,7 +2,7 @@
 
 **Status checked 2026-10-20:** the planner is deployed at [fishstix.uk](https://fishstix.uk) on Cloudflare Pages with D1-backed APIs; local development uses SQLite. The public catalogue returns 264 recipes, and the latest verified refresh stored 349 item quotes and 349 order books. All 346 catalogue items have quotes; 345 of 349 books have a usable bid or ask. D1 has 353 item images, and a public image request succeeded. The 12 calculation tests, Vue type check, and production build pass locally.
 
-**Market update 2026-11-02:** an hourly Windows refresh task and hourly Codex health monitor are active. The public API reports a successful refresh with 445 saved order books, 425 with a usable bid or ask, and 346/346 catalogue quotes. An artwork request made outside the signed-in browser received HTML instead of PNG data; the collector now fetches artwork in the browser and has validated 449 item and 22 machine images locally. The next scheduled upload will verify production image storage. The user confirmed hourly reads and public display are approved and requested 25 ms between book requests; the exact written terms have not been filed.
+**Market update 2026-11-02:** an hourly Windows refresh task is active. The public API reports a successful refresh with 445 saved order books, 425 with a usable bid or ask, and 346/346 catalogue quotes. An artwork request made outside the signed-in browser received HTML instead of PNG data; the collector now fetches artwork in the browser and has validated 449 item and 22 machine images locally. The next scheduled upload will verify production image storage. The user confirmed hourly reads and public display are approved and requested 25 ms between book requests; the exact written terms have not been filed.
 
 ## Goal
 
@@ -82,7 +82,7 @@ For the current website's screen-by-screen behavior, see [Website guide](WEBSITE
 - Order books expose best bid/ask and visible quantities, but do not guarantee that a new sell offer fills. A one-cent-under-ask suggestion is only a pricing aid. The game ticker lacks item volume; fees and fill behavior remain unmodeled.
 - Confirm price currency/unit basis, endpoint stability, and public reuse terms. User reports written developer permission for this read-only use; record confirmation of production and public distribution scope separately.
 - Keep plan valuation limited to known quotes and clearly mark incomplete input/output coverage.
-- The app reports the last sync outcome and serves saved quotes; an hourly Codex health monitor alerts on stale or failed data and reduced coverage.
+- The app reports the last sync outcome and serves saved quotes.
 - The Prices page reloads saved data; the CLI performs collection. Current valuations mark opposite-side and ticker-reference proxies; a missing item quote still leaves a figure incomplete.
 - **Remaining:** record the exact written permission terms and investigate the varying number of books with a usable bid or ask. The artwork download path was fixed on 2026-11-02 and 449 item plus 22 machine images validated locally; verify the next scheduled upload on the live site. More hourly observations are needed before long-range charts and forecasts can be judged. The Windows task requires this computer to be awake and the user signed in; a hosted collector would require a supported read-only credential or a separately maintained browser session. The existing receiver token authenticates uploads to this site; it does not authenticate requests to the game.
 

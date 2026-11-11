@@ -1,6 +1,6 @@
 # CapitalRift Factory Planner
 
-An unofficial Nuxt 4 production planner for Capital Rift. Search the crafting catalogue, place recipes on a grid, connect production machines, and estimate upstream requirements and surplus. The local app reads SQLite; the deployed site at [fishstix.uk](https://fishstix.uk) reads Cloudflare D1. Factory plans are saved locally in each browser.
+An unofficial Nuxt 4 production planner for Capital Rift. Search the crafting catalogue, place recipes on a grid, connect production machines, and estimate upstream requirements and surplus. The local app reads SQLite; the deployed site at [capital-rift.fishstix.uk](https://capital-rift.fishstix.uk) reads Cloudflare D1. Factory plans are saved locally in each browser.
 
 ## Run locally
 
@@ -76,7 +76,7 @@ See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for the verified gaps and sug
 
 ## Cloudflare Pages deployment
 
-The production Pages project is `capitalcalculator` at `fishstix.uk`. Its D1 binding `DB` points to `capitalrift-db`; `wrangler.toml` records the binding and the `dist` build output. The Nuxt server routes use D1 on Pages and the local SQLite file during `npm run dev`.
+The production Pages project is `capitalcalculator` at `capital-rift.fishstix.uk`. Its D1 binding `DB` points to `capitalrift-db`; `wrangler.toml` records the binding and the `dist` build output. The Nuxt server routes use D1 on Pages and the local SQLite file during `npm run dev`.
 
 The connected GitHub `main` branch deploys through Pages when pushed. For a manual deployment of an already built checkout, run:
 

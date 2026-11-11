@@ -12,7 +12,7 @@ const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const PROFILE_DIR = resolve(PROJECT_ROOT, '.capitalrift-session-profile')
 const GAME_ORIGIN = 'https://play.capitalrift.com'
 const TICKER_PATH = '/api/market/ticker'
-const PLANNER_SYNC_URL = new URL('/api/refresh', process.env.PLANNER_SYNC_URL || 'https://fishstix.uk').href
+const PLANNER_SYNC_URL = new URL('/api/refresh', process.env.PLANNER_SYNC_URL || 'https://capital-rift.fishstix.uk').href
 const REQUEST_DELAY_MS = Number.isFinite(Number(process.env.CAPITALRIFT_REQUEST_DELAY_MS))
   ? Math.max(25, Number(process.env.CAPITALRIFT_REQUEST_DELAY_MS))
   : 25
@@ -322,7 +322,8 @@ async function refresh() {
         try {
           const response = await fetch(`/api/market/book?commodity=${encodeURIComponent(itemId)}`, {
             credentials: 'same-origin',
-            cache: 'no-store'
+            cache: 'no-store',
+            signal: AbortSignal.timeout(20_000)
           })
           if (!response.ok) return { status: response.status }
           return { status: response.status, book: await response.json() }
