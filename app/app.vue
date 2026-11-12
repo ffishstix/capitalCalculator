@@ -1956,7 +1956,7 @@ function linkPath(link: GraphConnection) {
           <p v-else class="summary-empty">All production is connected.</p>
         </section>
         <div class="planner-note"><span class="note-icon">i</span><p>Connect a machine output to a matching input to balance the flow. Unconnected requirements are listed as external inputs.</p></div>
-        <footer class="source-foot"><span v-if="metadata">{{ metadata.recipeCount }} recipes · Snapshot imported {{ new Date(metadata.retrievedAt).toLocaleDateString() }}</span><strong v-if="catalogueAgeDays >= 30" class="stale-source">Catalogue may be out of date</strong><a href="https://github.com/mrawsky/capitalrift-tools" target="_blank" rel="noreferrer">Data source ↗</a><a href="/privacy.html">Privacy &amp; storage</a><a href="/about.html">About &amp; contact</a><a href="mailto:finlaywork1@hotmail.com">Support</a></footer>
+        <footer class="source-foot"><span v-if="metadata">{{ metadata.recipeCount }} recipes · Snapshot imported {{ new Date(metadata.retrievedAt).toLocaleDateString() }}</span><strong v-if="catalogueAgeDays >= 30" class="stale-source">Catalogue may be out of date</strong><a href="https://github.com/mrawsky/capitalrift-tools" target="_blank" rel="noreferrer">Data source ↗</a><a href="/privacy.html">Privacy &amp; storage</a><a href="/about.html">About &amp; contact</a><a href="mailto:support@fishstix.uk">Support</a></footer>
       </aside>
     </div>
     <template v-if="guideStep >= 0 && (activeView === 'network' || activeView === 'tree' || activeView === 'items' || activeView === 'targets' || activeView === 'buildings')">
